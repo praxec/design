@@ -64,9 +64,16 @@ confidence. The pipeline is **architected against its generators' priors.** Thro
 "distinctive" from an LLM opinion into a computed, calibrated measurement, with fail-fast on
 collapse.**
 
-1. **Genericness axis `G` (computed, not vibes)** — embedding distance of the rendered thumbnail
-   from a curated **generic corpus** centroid. High `G` = far from cookie-cutter. `G < τ` →
-   **ineligible**. Never an LLM taste opinion (which shares the disease).
+1. **Genericness axis `G` (computed, not vibes)** — a **structural-signature distance**: a
+   candidate's design-*geometry* feature vector (grid symmetry, composition centering, corner
+   geometry, palette/type signals — parsed from the rendered page) vs the **generic-corpus
+   centroid**. High `G` = far from cookie-cutter. `G < τ` → **ineligible**. Never an LLM taste
+   opinion (which shares the disease).
+   **Empirically validated (Increment-I Task 1):** clean ~2.4× separation of distinctive vs generic
+   (generic G ≈ 0.56–0.91, distinctive G ≈ 2.18–2.31, τ=1.549, margin 1.27, zero overlap). Key
+   finding — **the signal is composition *geometry*, not fonts or anti-patterns**: a detect-clean
+   brutalist ranks *highest*, and `asymmetric_grid`/`not_centered`/`square_corners` each separate
+   the golden set single-handedly. (Thumbnail image-embedding G is a later enhancement, not needed.)
 2. **Diversity as hard, verifiable constraints — not labels** — a seed ("brutalist / asymmetric /
    serif-display / mono+1") is a constraint set the generator must satisfy, **checked against the
    rendered CSS/DOM** (did the corners stay square, the grid asymmetric, the type serif?).
@@ -77,7 +84,9 @@ collapse.**
    is computed; the **human prune is the taste authority** (no auto-select on LLM taste).
 5. **Deterministic usability floor (TRIZ: novelty ↔ usability)** — novelty differentiates only among
    candidates that clear the `impeccable detect` gate + a11y/hierarchy floors. Novelty runs free in
-   generation; unusable output can never ship.
+   generation; unusable output can never ship. **Note (Task-1 finding): `detect` is the *usability*
+   floor, NOT a genericness signal** — a clean generic design passes detect with zero anti-patterns.
+   Distinctiveness is `G` (geometry, #1); usability is `detect`. Two distinct roles, both kept.
 6. **Human taste captured as evidence + learned** — each prune (chosen + rejected + `G`/axis
    context) → evidence → the flywheel builds a **per-operator taste profile** biasing future seeds.
 7. **Testable acceptance (TDD)** — a **golden fixture set** (distinctive vs generic) the `G`-metric
