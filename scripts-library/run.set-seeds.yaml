@@ -14,9 +14,22 @@
 # diverge picker). Increment II widens the refine branch to survivor-derived
 # perturbations + crossover; the wire shape here is stable.
 #
+# LOOP CLOSURE (spec §6b) — the third arg carries the human's STEER: when the
+# prune-and-steer gate produces { amplify:[...], avoid:[...] } from the human's
+# per-candidate reactions, we FOLD it into each tightened seed's `notes` field so
+# the downstream generation prompt carries "amplify […], avoid […]". The seed is
+# the annealing state; the steer is the gradient the next divergence anneals
+# toward. HONEST BOUNDARY: the OFFLINE stub generator (run.generate-direction)
+# IGNORES seed semantics, so the offline drive proves the PLUMBING (the steer
+# lands in the tightened seed) — the EFFECT (steer changing generated designs)
+# only manifests with the real Kimi generation cap, which reads the seed. Assert
+# the plumbing at the SEED level, not at the stub candidate level.
+# Backward-compatible: no steer (or empty amplify/avoid) → today's behavior exactly.
+#
 # Args (script arg renderer stringifies object/array values):
 #   $1 — seeds_in (JSON array; the operator's seed constraint-set objects)
 #   $2 — chosen   (JSON object; {} on round 1, else the survivor { id, seed, ... })
+#   $3 — steer    (JSON object; {} when absent, else { amplify:[...], avoid:[...] })
 #
 # Emits ONE JSON verdict on stdout, read at $.output.json.*; ALWAYS exits 0:
 #   { seeds: array (the seed set for the round about to diverge) }
@@ -28,13 +41,30 @@ scripts:
     source: design
     body: |
       #!/usr/bin/env node
-      // Deterministic seed-set owner: echo (round 1) or converge (refine).
+      // Deterministic seed-set owner: echo (round 1) or converge (refine),
+      // folding the human's steer into the tightened seed (loop closure).
       function j(v, d) { try { const x = JSON.parse(v); return x === undefined ? d : x; } catch { return d; } }
       const seedsIn = j(process.argv[2], []) || [];
       const chosen = j(process.argv[3], {}) || {};
+      const steer = j(process.argv[4], {}) || {};
       const survivorSeed =
         chosen && typeof chosen.seed === "object" && chosen.seed !== null
           ? chosen.seed
           : null;
-      const seeds = survivorSeed ? [survivorSeed] : (Array.isArray(seedsIn) ? seedsIn : []);
+      let seeds = survivorSeed ? [survivorSeed] : (Array.isArray(seedsIn) ? seedsIn : []);
+
+      // Fold the steer into each seed's `notes` so the next generation prompt
+      // carries "amplify […], avoid […]". No-op when steer is empty.
+      const asArr = (x) => (Array.isArray(x) ? x.filter((v) => v != null && v !== "") : []);
+      const amplify = asArr(steer.amplify);
+      const avoid = asArr(steer.avoid);
+      if (amplify.length || avoid.length) {
+        const note = `amplify: ${amplify.join(", ")}; avoid: ${avoid.join(", ")}`;
+        seeds = seeds.map((s) => {
+          const seed = s && typeof s === "object" ? { ...s } : { value: s };
+          seed.notes = [seed.notes, note].filter(Boolean).join(" | ");
+          seed.steer = { amplify, avoid };
+          return seed;
+        });
+      }
       console.log(JSON.stringify({ seeds }));

@@ -2,15 +2,25 @@
 # smoke.drive.sh — HEADLESS end-to-end drive of flow.anneal.structure-first
 # against the Increment-I STUB, using the real `praxec` binary + a scratch
 # sqlite gateway (state persists across command calls). Proves the measurement-
-# gated annealing spine to the human prune and back — offline, no LLM, no
-# browser. assert-don't-derive: every claim below is an explicit, atomic check
-# on the engine's own JSON, and any failure exits non-zero.
+# gated annealing spine THROUGH the prune-and-steer gate AND back around the
+# refine loop — offline, no LLM, no browser. assert-don't-derive: every claim
+# below is an explicit, atomic check on the engine's own JSON, any failure exits
+# non-zero.
 #
 # What it proves:
-#   1. HAPPY PATH   — start auto-drives the deterministic chain (fan-out →
-#      score → detect → eligibility) and PARKS at `pruning` with >=1 ELIGIBLE
-#      candidate (child human gate); submitting the human `pick` drives the
-#      parent to `done` / succeeded with the survivor recorded.
+#   1. HAPPY PATH + LOOP CLOSURE (spec §6b) — start auto-drives the deterministic
+#      chain (fan-out → score → detect → eligibility), builds the contact sheet,
+#      and PARKS at `pruning` on the prune-and-steer gate with >=1 ELIGIBLE
+#      candidate (child human gate). Resuming with STRUCTURED per-candidate
+#      feedback ({verdict, rank, likes, dislikes}) + the survivor `keep_id`:
+#        (a) aggregates the human's reactions into the `steer` {amplify, avoid};
+#        (b) refines round 1 with the survivor's seed AND FOLDS THE STEER into the
+#            tightened `round_seeds` (loop closure — the human's taste reaches the
+#            next divergence). Asserted at the SEED level: the offline stub ignores
+#            seed semantics, so the drive proves the PLUMBING (steer lands in the
+#            seed); the EFFECT only manifests with the real Kimi generation cap.
+#        (c) resuming the round-1 gate drives the parent to `done` / succeeded
+#            with the survivor recorded.
 #   2. COLLAPSE     — a round that yields ZERO eligible candidates (here forced
 #      by a demanding tau above every stub G — the "all G<τ" collapse of spec
 #      §9) reaches `failed` with reason DIVERGENCE_COLLAPSED and NEVER parks at
@@ -58,53 +68,111 @@ pq() { praxec query   --config "$CFG" "$@" 2>/dev/null; }
 # ---- assertion helper: pull a field via python, compare, or die -------------
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-echo "== 1/3 HAPPY PATH: start → park at pruning → pick → done =="
+echo "== 1/3 HAPPY PATH + LOOP CLOSURE: park at prune-and-steer → resume(feedback) → steer folds into round-1 seeds → resume → done =="
 OUT="$WORK/happy"; mkdir -p "$OUT"
+# max_rounds:1 so the survivor refines ONE round — that refine is where the steer
+# is folded into the tightened seeds (the loop-closure assertion below). Two
+# in-seed seeds ⇒ a >=2-candidate spread the human reacts across.
 START_INPUT=$(python3 -c '
 import json,sys
 print(json.dumps({"definitionId": sys.argv[1], "input": {
   "app_type":"dashboard",
   "profile": json.dumps({"app":"dashboard","needs":["density","hierarchy"]}),
-  "seeds":[{"corners":"square","type":"serif","grid":"asymmetric"}],
-  "n":1, "tau":1.549, "fit_floor":1.0,
-  "scripts_dir": sys.argv[2], "out_dir": sys.argv[3], "max_rounds":0,
+  "seeds":[{"corners":"square","type":"serif","grid":"asymmetric"},
+           {"corners":"round","type":"sans","grid":"symmetric"}],
+  "n":2, "tau":1.549, "fit_floor":1.0,
+  "scripts_dir": sys.argv[2], "out_dir": sys.argv[3], "max_rounds":1,
 }}))' "$DEF" "$SCRIPTS_DIR" "$OUT")
 
 START=$(pc "$START_INPUT")
-# ASSERT: parked at `pruning`, waiting, with a child human gate on >=1 eligible.
+# ASSERT: parked at `pruning` on the prune-and-steer gate, waiting, with a child
+# human gate on >=1 eligible; the gate resumes via the `resolve` transition.
 eval "$(printf '%s' "$START" | python3 -c '
 import sys,json
 d=json.load(sys.stdin)
 w=d.get("workflow",{}); c=d.get("context",{}); ph=d.get("pending_human") or {}
-state=w.get("state"); status=(d.get("result") or {}).get("status")
-elig=c.get("eligible_count")
-opts=(((ph.get("choices") or {}).get("options")) or [])
 res=ph.get("resolve") or {}; args=res.get("args") or {}
+elig=c.get("eligible",[])
 print("PARENT_ID=%r" % w.get("id"))
-print("STATE=%r"    % state)
-print("STATUS=%r"   % status)
-print("ELIG=%r"     % elig)
-print("N_OPTS=%r"   % len(opts))
+print("STATE=%r"    % w.get("state"))
+print("STATUS=%r"   % (d.get("result") or {}).get("status"))
+print("ELIG=%r"     % c.get("eligible_count"))
 print("CHILD_ID=%r" % args.get("workflowId"))
 print("CHILD_VER=%r"% args.get("expectedVersion"))
-print("CHOSEN_ID=%r"% (opts[0]["value"] if opts else ""))
+print("CHILD_TR=%r" % args.get("transition"))
+print("GATE_DEF=%r" % ph.get("definition_id"))
+print("KEEP_ID=%r"  % (elig[0]["id"] if elig else ""))
+print("ELIG_IDS=%r" % " ".join(x.get("id","") for x in elig))
 ')"
-[ "$STATE" = "pruning" ]        || fail "expected state=pruning, got $STATE"
-[ "$STATUS" = "waiting" ]       || fail "expected status=waiting, got $STATUS"
-[ "$ELIG" -ge 1 ] 2>/dev/null   || fail "expected eligible_count>=1, got $ELIG"
-[ "$N_OPTS" -ge 1 ] 2>/dev/null || fail "expected >=1 presented option, got $N_OPTS"
-[ -n "$CHILD_ID" ]              || fail "no child human-gate workflow id"
-echo "   parked at pruning; eligible_count=$ELIG; presenting $N_OPTS candidate(s); child=$CHILD_ID"
+[ "$STATE" = "pruning" ]                              || fail "expected state=pruning, got $STATE"
+[ "$STATUS" = "waiting" ]                             || fail "expected status=waiting, got $STATUS"
+[ "$ELIG" -ge 1 ] 2>/dev/null                        || fail "expected eligible_count>=1, got $ELIG"
+[ -n "$CHILD_ID" ]                                    || fail "no child prune-and-steer gate id"
+[ "$CHILD_TR" = "resolve" ]                           || fail "expected child transition=resolve, got $CHILD_TR"
+[ "$GATE_DEF" = "design/cap.gate.prune-and-steer" ]  || fail "expected prune-and-steer gate, got $GATE_DEF"
+echo "   parked at prune-and-steer; eligible_count=$ELIG; presenting [$ELIG_IDS]; child=$CHILD_ID"
 
-# Resume: submit the human pick to the CHILD gate as a human principal.
-PICK=$(python3 -c '
+# Resume: submit STRUCTURED per-candidate feedback (verdict / rank / likes /
+# dislikes — one entry per PRESENTED candidate, no silent partial prune) plus the
+# survivor keep_id, as a human principal. Survivor liked `type`, disliked `color`;
+# the rejected sibling disliked `space` — so the aggregated steer is deterministic:
+# amplify=[type] (survivor + top-ranked likes), avoid=[color, space] (all dislikes).
+RESUME=$(python3 -c '
 import json,sys
+ids=sys.argv[4].split(); keep=sys.argv[3]
+fb=[]
+for i,cid in enumerate(ids):
+    fb.append({"candidate_id":cid,
+      "verdict":("keep" if cid==keep else "reject"),
+      "rank":i+1,
+      "likes":(["type"] if cid==keep else []),
+      "dislikes":(["color"] if cid==keep else ["space"]),
+      "notes":"smoke: taste reaction"})
 print(json.dumps({"workflowId":sys.argv[1],"expectedVersion":int(sys.argv[2]),
-  "transition":"pick","arguments":{"chosen_id":sys.argv[3],"rationale":"smoke: strongest G, fit clears floor"}}))' \
-  "$CHILD_ID" "$CHILD_VER" "$CHOSEN_ID")
-praxec command --human --config "$CFG" "$PICK" >/dev/null 2>&1
+  "transition":"resolve","arguments":{"keep_id":keep,"feedback":fb}}))' \
+  "$CHILD_ID" "$CHILD_VER" "$KEEP_ID" "$ELIG_IDS")
+praxec command --human --config "$CFG" "$RESUME" >/dev/null 2>&1
 
-# ASSERT: the parent re-drove to `done` / succeeded with the survivor recorded.
+# ASSERT LOOP CLOSURE: the parent aggregated the steer and refined round 1, and
+# the tightened `round_seeds` CARRY THE STEER (folded into the seed's `notes`).
+# This is the plumbing proof at the SEED level — the whole point of I-b.
+P2=$(pq "{\"workflowId\":\"$PARENT_ID\"}")
+eval "$(printf '%s' "$P2" | python3 -c '
+import sys,json
+d=json.load(sys.stdin); w=d.get("workflow",{}); c=d.get("context",{})
+ph=d.get("pending_human") or {}; args=(ph.get("resolve") or {}).get("args") or {}
+rs=c.get("round_seeds") or [{}]
+steer=c.get("steer") or {}
+c2elig=c.get("eligible",[])
+print("R2STATE=%r" % w.get("state"))
+print("R2ROUND=%r" % c.get("round"))
+print("R2NOTES=%r" % ((rs[0] or {}).get("notes","")))
+print("R2AMP=%r"   % ",".join(steer.get("amplify",[])))
+print("R2AVOID=%r" % ",".join(steer.get("avoid",[])))
+print("C2_ID=%r"   % args.get("workflowId"))
+print("C2_VER=%r"  % args.get("expectedVersion"))
+print("C2_KEEP=%r" % (c2elig[0]["id"] if c2elig else ""))
+print("C2_IDS=%r"  % " ".join(x.get("id","") for x in c2elig))
+')"
+[ "$R2STATE" = "pruning" ]        || fail "expected re-park at pruning (round 1), got $R2STATE"
+[ "$R2ROUND" -eq 1 ] 2>/dev/null  || fail "expected refined round=1, got $R2ROUND"
+[ "$R2AMP" = "type" ]             || fail "expected steer.amplify=[type], got [$R2AMP]"
+[ "$R2AVOID" = "color,space" ]    || fail "expected steer.avoid=[color,space], got [$R2AVOID]"
+case "$R2NOTES" in *"amplify: type"*) : ;; *) fail "steer amplify not folded into round_seeds notes: '$R2NOTES'";; esac
+case "$R2NOTES" in *"avoid: color"*)  : ;; *) fail "steer avoid not folded into round_seeds notes: '$R2NOTES'";; esac
+echo "   loop closed: round=1 seeds carry the steer → notes='$R2NOTES'  ✓"
+
+# Resume the round-1 gate → the parent reaches `done` / succeeded with a survivor.
+RESUME2=$(python3 -c '
+import json,sys
+ids=sys.argv[4].split(); keep=sys.argv[3]
+fb=[{"candidate_id":cid,"verdict":("keep" if cid==keep else "reject"),"rank":i+1,
+     "likes":[],"dislikes":[],"notes":""} for i,cid in enumerate(ids)]
+print(json.dumps({"workflowId":sys.argv[1],"expectedVersion":int(sys.argv[2]),
+  "transition":"resolve","arguments":{"keep_id":keep,"feedback":fb}}))' \
+  "$C2_ID" "$C2_VER" "$C2_KEEP" "$C2_IDS")
+praxec command --human --config "$CFG" "$RESUME2" >/dev/null 2>&1
+
 eval "$(pq "{\"workflowId\":\"$PARENT_ID\"}" | python3 -c '
 import sys,json
 d=json.load(sys.stdin); w=d.get("workflow",{}); c=d.get("context",{})
@@ -112,11 +180,10 @@ print("FSTATE=%r"  % w.get("state"))
 print("FSTATUS=%r" % (d.get("result") or {}).get("status"))
 print("SURVIVOR=%r"% (c.get("chosen",{}) or {}).get("id"))
 ')"
-[ "$FSTATE" = "done" ]         || fail "expected final state=done, got $FSTATE"
-[ "$FSTATUS" = "succeeded" ]   || fail "expected status=succeeded, got $FSTATUS"
-[ -n "$SURVIVOR" ]             || fail "no survivor recorded in chosen"
-[ "$SURVIVOR" = "$CHOSEN_ID" ] || fail "survivor $SURVIVOR != picked $CHOSEN_ID"
-echo "   pick drove parent to done; survivor=$SURVIVOR  ✓"
+[ "$FSTATE" = "done" ]       || fail "expected final state=done, got $FSTATE"
+[ "$FSTATUS" = "succeeded" ] || fail "expected status=succeeded, got $FSTATUS"
+[ -n "$SURVIVOR" ]           || fail "no survivor recorded in chosen"
+echo "   resume round-1 gate → parent done; survivor=$SURVIVOR  ✓"
 
 echo
 echo "== 2/3 COLLAPSE: zero eligible (all G<τ) → DIVERGENCE_COLLAPSED, no human =="
@@ -168,4 +235,4 @@ print("PREASON=%r" % c.get("reason"))
 echo "   no app_type → failed(PURPOSE_UNSET)  ✓"
 
 echo
-echo "DRIVE OK — parks at the prune with >=1 eligible, pick → done; collapse + purpose fail-fast."
+echo "DRIVE OK — parks at prune-and-steer with >=1 eligible; structured feedback → steer folds into the tightened round-1 seeds (loop closure) → done; collapse + purpose fail-fast."

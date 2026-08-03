@@ -1,0 +1,61 @@
+# capabilities/cap.inspect.contact-sheet.yaml
+#
+# Spec §6b "Presentation = the browser" — the deterministic CONTACT-SHEET builder
+# that composes the eligible candidate spread into ONE self-contained local
+# contact-sheet.html the human opens before the prune-and-steer gate. Mirrors
+# cap.inspect.score-axes EXACTLY (the CAP-WRAPS-SCRIPT-SKILL pattern): verb
+# `inspect` (the blessed deterministic introspection verb — reads candidate
+# records, writes ONE read-only structured artifact), a single `kind: script`
+# leaf wrapping the Task-1 presentation core (contact-sheet.mjs, single source of
+# truth) via the `inspect.build-contact-sheet` script-skill.
+#
+# Because the engine exposes no pack-directory scope, `scripts_dir` (the absolute
+# path to this pack's scripts-library/, holding contact-sheet.mjs) is threaded in
+# as an input the orchestrator/operator supplies — same seam as score-axes.
+#
+# V6: `inspect` is Deterministic → primary must be `kind: script`. The engine
+# JSON-stringifies the `candidates` array into the script arg (same as
+# cap.inspect.collect-candidate's array args), and contact-sheet.mjs already
+# accepts a JSON string as its first CLI arg.
+#
+# Fail-fast: `NO_CANDIDATES_TO_PRUNE` (from contact-sheet.mjs, exit 3) → this
+# transition FAILS rather than emitting an empty sheet — never present nothing.
+workflows:
+  cap.inspect.contact-sheet:
+    verb: inspect
+    lifecycle: experimental
+    description: >
+      Compose the eligible candidate spread into ONE self-contained local
+      contact-sheet.html (a labelled grid — thumbnail, id/name, G/fit badges, a
+      link to each full render) by wrapping the Task-1 presentation core
+      (contact-sheet.mjs). The taste-authority surface the human opens before the
+      prune-and-steer gate. Refuses to emit an empty sheet (NO_CANDIDATES_TO_PRUNE).
+    snippet:
+      inputs:
+        # Absolute path to this pack's scripts-library/ (holds contact-sheet.mjs).
+        # The engine has no pack-dir scope, so the caller passes it explicitly.
+        scripts_dir: { type: string, required: true }
+        # The eligible candidate records (each { id, name, G, fit, thumbnail, artifact }).
+        candidates:  { type: array,  required: true }
+        # Directory to write contact-sheet.html into.
+        out_dir:     { type: string, required: true }
+      outputs:
+        contact_sheet: { type: object }
+    initialState: building
+    states:
+      building:
+        goal: Compose the eligible spread into one self-contained contact sheet.
+        transitions:
+          build:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.build-contact-sheet
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.candidates"
+                - "$.workflow.input.out_dir"
+            output:
+              contact_sheet: "$.output.json.contact_sheet"
+      done: { terminal: true }

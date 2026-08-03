@@ -53,6 +53,9 @@ workflows:
       chosen:   { type: object }
       round:    { type: integer }
       reason:   { type: string }
+      # The last human steer + per-candidate reactions (evidence of the prune).
+      steer:    { type: object }
+      feedback: { type: array }
     initialContext:
       eligible:              []
       scored:                []
@@ -70,6 +73,9 @@ workflows:
       cand_G:                0
       cand_fit:              {}
       cand_antipattern_count: 0
+      contact_sheet:         {}
+      steer:                 {}
+      feedback:              []
     initialState: seeding
     states:
 
@@ -142,7 +148,7 @@ workflows:
             guards:
               - { kind: expr, expr: "$.context.pick_phase == 'picked'" }
           prune:
-            target: pruning
+            target: building_sheet
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.pick_phase == 'exhausted'" }
@@ -272,21 +278,54 @@ workflows:
                   "$.context.scored":         scored
                   "$.context.eligible_count": eligible_count
 
+      # BUILD THE CONTACT SHEET — compose the eligible spread into ONE local
+      # self-contained contact-sheet.html the human opens (spec §6b "presentation
+      # = the browser"). A deterministic `kind: script` leaf that MUST precede the
+      # gate: a gate cap's INITIAL state must lead with the human (V6/§4.1
+      # INVALID_PRIMARY_EXECUTOR), so the sheet is built by the orchestrator, not
+      # inside the gate — the same decomposition render/score/detect already use.
+      building_sheet:
+        goal: Compose the eligible spread into one contact sheet for the human.
+        transitions:
+          build:
+            target: pruning
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.contact-sheet
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  candidates:  "$.context.eligible"
+                  out_dir:     "$.workflow.input.out_dir"
+                outputs:
+                  "$.context.contact_sheet": contact_sheet
+
+      # THE HUMAN PRUNE-AND-STEER (spec §6b) — present the pre-built contact sheet
+      # of the eligible spread (each already clears all three floors), park for the
+      # human to react PER candidate (verdict keep|branch|compose|reject, rank,
+      # likes, dislikes, notes) and keep ONE survivor, then aggregate the reactions
+      # into the `steer` the NEXT divergence anneals toward. The human is the
+      # genericness fitness function (§3: G advisory on real designs). A sub-cap so
+      # `chosen` feeds refine's use.inputs (V13); the parent parks while the child
+      # awaits the human. `steer` closes the loop into refining.
       pruning:
-        goal: Human prunes the eligible set to one surviving direction.
+        goal: Human prunes the eligible set to one survivor and steers the next spread.
         transitions:
           prune:
             target: refine_route
             actor: deterministic
             executor:
               kind: workflow
-              definitionId: design/cap.gate.prune
+              definitionId: design/cap.gate.prune-and-steer
               use:
                 inputs:
-                  candidates: "$.context.eligible"
-                  prompt:     "Keep one eligible direction to refine (only candidates clearing detect/fit/G are shown)."
+                  candidates:    "$.context.eligible"
+                  contact_sheet: "$.context.contact_sheet"
                 outputs:
-                  "$.context.chosen": chosen
+                  "$.context.chosen":   chosen
+                  "$.context.steer":    steer
+                  "$.context.feedback": feedback
 
       refine_route:
         transitions:
@@ -301,8 +340,11 @@ workflows:
             guards:
               - { kind: expr, expr: "$.context.round >= $.workflow.input.max_rounds" }
 
+      # Converge the next round's seed set on the survivor (tightened seeds) AND
+      # fold in the human's steer (loop closure §6b): the {amplify,avoid} gradient
+      # lands in the tightened seed's notes the next divergence generates against.
       refining:
-        goal: Tighten the seed set around the surviving direction.
+        goal: Tighten the seed set around the survivor + fold in the human's steer.
         transitions:
           tighten:
             target: bumping
@@ -314,6 +356,7 @@ workflows:
                 inputs:
                   seeds_in: "$.context.round_seeds"
                   chosen:   "$.context.chosen"
+                  steer:    "$.context.steer"
                 outputs:
                   "$.context.round_seeds": seeds
 
