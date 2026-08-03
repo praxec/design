@@ -58,6 +58,12 @@ workflows:
         profile:      { type: string, default: "" }
         # Stable candidate id — the artifact filename is candidate-<id>.html.
         candidate_id: { type: string, default: "" }
+        # OPTIONAL content source: an abs path to a file holding the TARGET
+        # page's REAL copy. When non-empty the agent reads it (file-read tool)
+        # and lays out EXACTLY that copy instead of inventing content, so every
+        # candidate renders the same words and the only variable is the design.
+        # Empty ⇒ representative content for the app type (Increment-I default).
+        content_path: { type: string, default: "" }
       outputs:
         candidate: { type: object }
     initialState: preparing
@@ -111,6 +117,14 @@ workflows:
 
                 Serve the app's core needs (fit-for-purpose):
                   profile = {{ $.workflow.input.profile }}
+
+                If a content source path is given below, it holds the page's
+                REAL copy (headings, body, labels, CTAs, in order). READ it with
+                your file-read tool and lay out EXACTLY that copy — do not
+                invent, add, reorder, or drop content; the words are fixed, the
+                DESIGN is yours. If it is empty, use representative content for
+                the app type.
+                  content source: {{ $.workflow.input.content_path }}
 
                 Be distinctive — do NOT emit the generic default (Inter + dark
                 gradient + rounded cards + centered symmetric grid). Express the

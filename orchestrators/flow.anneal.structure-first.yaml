@@ -230,6 +230,11 @@ workflows:
       scripts_dir: { type: string, default: "" }
       # Run artifacts dir (candidate HTML + thumbnails).
       out_dir:     { type: string, default: "" }
+      # OPTIONAL content source: abs path to a file holding the TARGET page's
+      # REAL copy. Threaded into the REAL generation leaf so every candidate
+      # lays out the SAME words (design is the only variable); "" ⇒ the agent
+      # uses representative content (Increment-I default). Content-grounded gen.
+      content_path: { type: string, default: "" }
       # Bounds the refine loop (spec §6 "capped by max-rounds").
       max_rounds:  { type: integer, default: 1 }
     outputs:
@@ -399,6 +404,7 @@ workflows:
                   seed:         "$.context.current_seed"
                   profile:      "$.workflow.input.profile"
                   candidate_id: "$.context.candidate_id"
+                  content_path: "$.workflow.input.content_path"
                 outputs:
                   "$.context.candidate": candidate
 

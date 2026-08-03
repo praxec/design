@@ -46,6 +46,13 @@ workflows:
       fit_floor:   { type: number, default: 1.0 }
       scripts_dir: { type: string, default: "" }
       out_dir:     { type: string, default: "" }
+      # Declared for TWIN PARITY with flow.anneal.structure-first (content-
+      # grounded generation). The offline `generating` leaf is the deterministic
+      # STUB (design/cap.run.generate-direction), which takes no content — so
+      # this input is intentionally NOT threaded into it (the twins still differ
+      # ONLY at the generating leaf). Present here only to keep the input
+      # surfaces identical.
+      content_path: { type: string, default: "" }
       max_rounds:  { type: integer, default: 1 }
     outputs:
       eligible: { type: array }

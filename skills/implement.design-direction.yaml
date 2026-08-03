@@ -81,8 +81,11 @@ skills:
         - ALL CSS inline in one `<style>` block — NO external stylesheets,
           fonts, scripts, images or network requests of any kind (it must render
           offline and be parseable by a headless screenshotter);
-        - real, representative content for the app type (not lorem-only) so the
-          hierarchy and density are visible;
+        - if your task names a content source, READ it and lay out THAT exact
+          copy verbatim (do not invent, alter, reorder, or drop it) — the words
+          are fixed, the composition is yours; only when no content source is
+          given do you use representative content for the app type (not lorem-
+          only) so the hierarchy and density are visible;
         - no build step, no framework — just HTML + inline CSS.
       Then finish. The path and candidate id are in your task; do not invent
       others. A deterministic verifier re-opens the file at that path and fails
