@@ -12,7 +12,14 @@
 //   seed_adherence given a seed constraint set, does the feature vector satisfy it?
 //   fit            given an app-type core-needs profile, a checklist score.
 //
-// Fail-fast: if the golden set cannot be separated, calibration emits
+// REGIME: score.mjs defaults to the CANDIDATE calibration (calibration.golden.json)
+// — valid for the self-contained designs the pipeline GENERATES. To score a REAL
+// production page (rollout surfaces, an existing component) pass
+// `--calibration calibration.corpus.json`; that regime is SCORE_UNCALIBRATED today
+// (structural-G does not separate real designs — the human prune is the real-site
+// fitness function until the deferred image-embedding G), so it honestly refuses.
+//
+// Fail-fast: if the loaded calibration cannot separate, score emits
 // SCORE_UNCALIBRATED and this CLI exits non-zero with NO fabricated G — the
 // metric never returns a confident score it cannot stand behind.
 

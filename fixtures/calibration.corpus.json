@@ -1,0 +1,229 @@
+{
+  "status": "SCORE_UNCALIBRATED",
+  "generatedAt": "2026-08-03T14:34:40.269Z",
+  "source": "corpus",
+  "provenance": {
+    "manifest": "fixtures/corpus/manifest.json",
+    "counts": {
+      "generic": 15,
+      "distinctive": 16
+    }
+  },
+  "featureKeys": [
+    "serif_or_display",
+    "no_overused_font",
+    "square_corners",
+    "intentional_asymmetry",
+    "not_centered",
+    "no_gradient_bg",
+    "heavy_rules",
+    "display_scale",
+    "bold_palette",
+    "minimal_polish"
+  ],
+  "genCentroid": [
+    0.06666666666666667,
+    0.8,
+    0.016666666666666666,
+    0.0918918918918919,
+    0.7333333333333333,
+    0.26666666666666666,
+    0.18888888888888886,
+    0.2622222222222222,
+    0.3168432993031923,
+    0.10508585838035302
+  ],
+  "tau": null,
+  "margin": -0.2782543001878295,
+  "maxGeneric": 1.3820290792520669,
+  "minDistinctive": 1.1037747790642374,
+  "separates": false,
+  "scored": [
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/shadcn-ui.html",
+      "source": "https://ui.shadcn.com",
+      "label": "generic",
+      "G": 1.196910237942243
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-salient.html",
+      "source": "https://salient.tailwindui.com",
+      "label": "generic",
+      "G": 1.132451310009754
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-spotlight.html",
+      "source": "https://spotlight.tailwindui.com",
+      "label": "generic",
+      "G": 0.9012345684229972
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-studio.html",
+      "source": "https://studio.tailwindui.com",
+      "label": "generic",
+      "G": 1.1743247260172123
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-commit.html",
+      "source": "https://commit.tailwindui.com",
+      "label": "generic",
+      "G": 0.8396302712177993
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-pocket.html",
+      "source": "https://pocket.tailwindui.com",
+      "label": "generic",
+      "G": 0.9879653835901528
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-transmit.html",
+      "source": "https://transmit.tailwindui.com",
+      "label": "generic",
+      "G": 1.2573096058165405
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-keynote.html",
+      "source": "https://keynote.tailwindui.com",
+      "label": "generic",
+      "G": 0.7403179921073365
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-syntax.html",
+      "source": "https://syntax.tailwindui.com",
+      "label": "generic",
+      "G": 0.6049193756396714
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-primer.html",
+      "source": "https://primer.tailwindui.com",
+      "label": "generic",
+      "G": 0.7334061503068663
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-radiant.html",
+      "source": "https://radiant.tailwindui.com",
+      "label": "generic",
+      "G": 0.9890869282626582
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/vercel.html",
+      "source": "https://vercel.com",
+      "label": "generic",
+      "G": 0.8449085643118636
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/supabase.html",
+      "source": "https://supabase.com",
+      "label": "generic",
+      "G": 0.8520672685860446
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/clerk.html",
+      "source": "https://clerk.com",
+      "label": "generic",
+      "G": 1.1368307397460071
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/railway.html",
+      "source": "https://railway.com",
+      "label": "generic",
+      "G": 1.3820290792520669
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/pudding.html",
+      "source": "https://pudding.cool",
+      "label": "distinctive",
+      "G": 1.273381617273488
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/gov-uk.html",
+      "source": "https://www.gov.uk",
+      "label": "distinctive",
+      "G": 1.6645097489260186
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/npr-text.html",
+      "source": "https://text.npr.org",
+      "label": "distinctive",
+      "G": 1.6721521175628005
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/craigslist.html",
+      "source": "https://craigslist.org",
+      "label": "distinctive",
+      "G": 1.7496840751806264
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/berkshire.html",
+      "source": "https://www.berkshirehathaway.com",
+      "label": "distinctive",
+      "G": 2.05746728767447
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/paulgraham.html",
+      "source": "https://www.paulgraham.com/articles.html",
+      "label": "distinctive",
+      "G": 1.5311615633937128
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/danluu.html",
+      "source": "https://danluu.com",
+      "label": "distinctive",
+      "G": 1.7442445357707312
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/are-na.html",
+      "source": "https://www.are.na",
+      "label": "distinctive",
+      "G": 1.1037747790642374
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/cosmos.html",
+      "source": "https://www.cosmos.so",
+      "label": "distinctive",
+      "G": 1.1331417380581454
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/mschf.html",
+      "source": "https://mschf.com",
+      "label": "distinctive",
+      "G": 1.5900209993405217
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/bloomberg-gfx.html",
+      "source": "https://www.bloomberg.com/graphics/2015-whats-warming-the-world/",
+      "label": "distinctive",
+      "G": 1.4458689943124865
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/worrydream.html",
+      "source": "https://worrydream.com",
+      "label": "distinctive",
+      "G": 1.4995413789458345
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/tonsky.html",
+      "source": "https://tonsky.me",
+      "label": "distinctive",
+      "G": 1.313420564089101
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/sive-rs.html",
+      "source": "https://sive.rs",
+      "label": "distinctive",
+      "G": 1.4869120751021467
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/aworkinglibrary.html",
+      "source": "https://aworkinglibrary.com",
+      "label": "distinctive",
+      "G": 1.540160252315225
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/readymag-showcase.html",
+      "source": "https://readymag.com/examples/",
+      "label": "distinctive",
+      "G": 1.3525627666038609
+    }
+  ]
+}

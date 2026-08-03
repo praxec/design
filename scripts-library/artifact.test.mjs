@@ -50,6 +50,17 @@ test("CONTRACT: score() LOADS the artifact for centroid + τ and places a candid
   assert.equal(r.distinctive, r.G > cal.tau);
 });
 
+test("CONTRACT: score() default (no --calibration) uses the committed CANDIDATE/golden regime and scores", () => {
+  // Pins that the committed default artifact is a CALIBRATED candidate-regime one —
+  // if the default were the real-corpus SCORE_UNCALIBRATED artifact, this throws;
+  // if the default silently scored real designs with a golden τ, calibration_source
+  // would still read "golden" here (correct) but the regime doc makes that explicit.
+  const r = score(join(FX, "distinctive-01-editorial-serif.html"));
+  assert.equal(r.calibration_source, "golden");
+  assert.ok(r.G > 0);
+  assert.equal(typeof r.distinctive, "boolean");
+});
+
 test("CONTRACT: score() fail-fasts SCORE_UNCALIBRATED on an unseparable artifact (no fabricated score)", () => {
   const badPath = join(tmp, "uncalibrated.json");
   writeFileSync(

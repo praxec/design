@@ -27,7 +27,8 @@ import {
   calibrate,
   loadCorpus,
   loadCalibration,
-  CALIBRATION_FILE,
+  GOLDEN_CALIBRATION_FILE,
+  CORPUS_CALIBRATION_FILE,
 } from "./calibrate.mjs";
 
 // The corpus is a built artifact (node build-corpus.mjs). Skip cleanly if absent
@@ -77,11 +78,21 @@ test("EMPIRICAL: the metric still carries real RANK signal (not noise)", { skip:
   assert.ok(auc >= 0.8, `rank AUC ${auc.toFixed(3)} should show strong (not perfect) signal`);
 });
 
-test("the committed calibration.json reflects the real-corpus outcome (artifact is honest/current)", { skip: !haveCorpus }, () => {
-  if (!existsSync(CALIBRATION_FILE)) return; // artifact optional on fresh checkout
-  const art = loadCalibration();
-  if (art.source !== "corpus") return; // only assert when the shipped artifact is the real-corpus one
-  assert.equal(art.status, corpusCal.status);
-  assert.equal(art.tau, corpusCal.tau);
-  assert.ok(Math.abs(art.margin - corpusCal.margin) < 1e-9, "artifact margin must match a fresh corpus calibration");
+test("BOTH committed artifacts are honest: golden=CALIBRATED (candidate regime), corpus=SCORE_UNCALIBRATED (real-site regime)", { skip: !haveCorpus }, () => {
+  // The guard against the clobber defect: a plain `calibrate.mjs` run regenerates
+  // BOTH, so the honest real-corpus finding can never be silently overwritten by
+  // the golden one. No vacuous early-return — both artifacts must exist and match.
+  assert.ok(existsSync(GOLDEN_CALIBRATION_FILE), "calibration.golden.json must be committed (score.mjs default)");
+  assert.ok(existsSync(CORPUS_CALIBRATION_FILE), "calibration.corpus.json must be committed (the honest real-site finding)");
+
+  const golden = loadCalibration(GOLDEN_CALIBRATION_FILE);
+  assert.equal(golden.source, "golden");
+  assert.equal(golden.status, "CALIBRATED");
+  assert.ok(golden.tau > 0, "candidate regime carries a usable τ");
+
+  const corpus = loadCalibration(CORPUS_CALIBRATION_FILE);
+  assert.equal(corpus.source, "corpus");
+  assert.equal(corpus.status, corpusCal.status); // SCORE_UNCALIBRATED
+  assert.equal(corpus.tau, null);
+  assert.ok(Math.abs(corpus.margin - corpusCal.margin) < 1e-9, "corpus artifact margin must match a fresh corpus calibration");
 });
