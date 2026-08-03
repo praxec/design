@@ -1,0 +1,69 @@
+# scripts-library/run.render-thumbnail.yaml
+#
+# ============================ STUB — Increment I ============================
+# The PRODUCTION render path is the browser MCP (spec §2 / §5 / §7): screenshot
+# each candidate via the QA-reused `browser` connection. That needs a live
+# browser server + lease and is therefore NOT offline. To keep the Increment-I
+# spine exercisable HEADLESS + OFFLINE, this stub emits a DETERMINISTIC SVG
+# placeholder thumbnail (clearly marked "stub thumbnail") instead of a real
+# screenshot. Swap `cap.run.render-thumbnail`'s executor for `kind: mcp`
+# (connection `browser`) in Increment II — see connections/browser.yaml.
+# ===========================================================================
+#
+#   Args: [candidate_html, out_dir, candidate_id?]
+#
+# Emits { thumbnail: { artifact, kind: "stub-svg", of: <candidate_html> } }.
+# Fail-fast (spec §5): exit 3 CANDIDATE_NOT_RENDERABLE when the candidate HTML
+# is absent OR does not look like parseable HTML (no <html/<!doctype/<body) —
+# a candidate you cannot render can never reach the human prune.
+version: "1.0.0"
+scripts:
+  run.render-thumbnail:
+    verb: run
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // STUB renderer (see file header). Deterministic, offline, no browser.
+      const { existsSync, readFileSync, mkdirSync, writeFileSync } = require("node:fs");
+      const { join, basename } = require("node:path");
+
+      const candidate = process.argv[2];
+      const outDir = process.argv[3];
+      const id = process.argv[4] || (candidate ? basename(candidate).replace(/\.html?$/i, "") : "unknown");
+
+      if (!candidate || !outDir) {
+        console.error(JSON.stringify({ error: "ARGS_UNSET", need: ["candidate_html", "out_dir"] }));
+        process.exit(2);
+      }
+      if (!existsSync(candidate)) {
+        console.error(JSON.stringify({
+          error: "CANDIDATE_NOT_RENDERABLE",
+          message: `candidate HTML does not exist: ${candidate}`,
+        }));
+        process.exit(3);
+      }
+      const html = readFileSync(candidate, "utf8");
+      if (!/<html|<!doctype|<body/i.test(html)) {
+        console.error(JSON.stringify({
+          error: "CANDIDATE_NOT_RENDERABLE",
+          message: `candidate does not parse as HTML: ${candidate}`,
+        }));
+        process.exit(3);
+      }
+
+      const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [, id])[1].trim();
+      const esc = (s) => String(s).replace(/[<&>]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
+        <rect width="320" height="200" fill="#f4f1ea" stroke="#111" stroke-width="8"/>
+        <text x="20" y="44" font-family="monospace" font-size="14" fill="#111">STUB THUMBNAIL</text>
+        <text x="20" y="72" font-family="monospace" font-size="12" fill="#333">${esc(title)}</text>
+        <text x="20" y="176" font-family="monospace" font-size="10" fill="#666">of ${esc(basename(candidate))}</text>
+      </svg>`;
+
+      mkdirSync(outDir, { recursive: true });
+      const artifact = join(outDir, `thumb-${id}.svg`);
+      writeFileSync(artifact, svg);
+      console.log(JSON.stringify({
+        thumbnail: { artifact, kind: "stub-svg", of: candidate },
+      }));

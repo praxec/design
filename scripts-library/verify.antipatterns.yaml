@@ -1,0 +1,68 @@
+# scripts-library/verify.antipatterns.yaml
+#
+# The deterministic USABILITY FLOOR of the annealing spine (spec §3.5 / §2).
+# Wraps `npx impeccable detect --json <artifact>` — a real, LLM-free anti-
+# pattern detector — and reduces its findings array to a floor verdict:
+#   { detect: [...], antipattern_count: N, usable: (N == 0) }.
+#
+# NOTE (Task-1 finding, spec §3.5): `detect` is the USABILITY floor, NOT a
+# genericness signal — a clean generic design passes with zero anti-patterns.
+# Distinctiveness is `G` (geometry), scored separately by inspect.score-axes.
+# Two distinct roles, both kept.
+#
+# This is NOT a stub: impeccable detect is the production gate. It needs no
+# auth and no network beyond the one-time `npx` package fetch (cached after).
+#
+# Fail-fast: exit 3 CANDIDATE_NOT_RENDERABLE when the artifact file is absent
+# (a floor cannot be asserted over a candidate that does not exist), exit 4
+# DETECT_FAILED / DETECT_UNPARSEABLE when detect cannot produce parseable JSON.
+# A clean run (usable or not) exits 0 — the anti-pattern COUNT is data the
+# gate branches on, not an error.
+version: "1.0.0"
+scripts:
+  verify.antipatterns:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Args: [artifact] — path to the rendered candidate HTML.
+      const { existsSync } = require("node:fs");
+      const { execFileSync } = require("node:child_process");
+      const artifact = process.argv[2];
+      if (!artifact) {
+        console.error(JSON.stringify({ error: "ARTIFACT_UNSET" }));
+        process.exit(2);
+      }
+      if (!existsSync(artifact)) {
+        console.error(JSON.stringify({
+          error: "CANDIDATE_NOT_RENDERABLE",
+          message: `artifact does not exist: ${artifact}`,
+        }));
+        process.exit(3);
+      }
+      let out;
+      try {
+        out = execFileSync("npx", ["--yes", "impeccable", "detect", "--json", artifact], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          maxBuffer: 8 * 1024 * 1024,
+        });
+      } catch (err) {
+        // detect exits non-zero when it finds findings; stdout still holds JSON.
+        out = err.stdout ? err.stdout.toString() : "";
+        if (!out) {
+          console.error(JSON.stringify({ error: "DETECT_FAILED", message: String(err.message) }));
+          process.exit(4);
+        }
+      }
+      let findings;
+      try {
+        findings = JSON.parse((out || "").trim() || "[]");
+      } catch {
+        console.error(JSON.stringify({ error: "DETECT_UNPARSEABLE" }));
+        process.exit(4);
+      }
+      const arr = Array.isArray(findings) ? findings : (findings.detect || []);
+      const count = arr.length;
+      console.log(JSON.stringify({ detect: arr, antipattern_count: count, usable: count === 0 }));

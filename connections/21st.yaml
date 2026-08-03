@@ -1,0 +1,33 @@
+# connections/21st.yaml
+#
+# REFERENCE connection (operators COPY into their gateway config and GRANT —
+# NOT auto-loaded; the manifest maps the connections tier to an unused dir).
+# 21st AI MCP for parallel frontier UI generation (spec §5/§7) — the DESIGN
+# AFFINITY panel that backs the PRODUCTION `cap.generate.direction` /
+# `cap.recombine.aspects` in Increment II.
+#
+# ============================ DECLARED, NOT WIRED ==========================
+# Increment I ships this as a DECLARED reference only. Generation runs on the
+# STUB (`cap.run.generate-direction` → scripts-library `run.generate-direction`)
+# so the spine is provable offline. Wiring 21st needs the operator's key (via
+# `providers.env`) + registry install (`tools install`, community-and-premium
+# lane) + curated corpora — an asset/wiring step, per spec §9's honest boundary.
+# Nothing in Increment I invokes it.
+# ===========================================================================
+#
+# The exact command/args + auth are operator/deployment-specific; fill them in
+# from the 21st MCP registry entry and set the key in your `providers.env`. The
+# placeholder below records the SHAPE (an MCP connection) so operators know what
+# to grant, not runnable values.
+connections:
+  twenty_first:
+    kind: mcp
+    # PLACEHOLDER — replace with the 21st MCP launch command from the registry.
+    command: npx
+    args: ["-y", "@21st-dev/mcp@latest"]
+    # 21st requires an API key; set it in providers.env and reference here per
+    # your gateway's secret convention. Declared, not wired, in Increment I.
+    description: >
+      21st AI MCP — parallel frontier UI generation (design-affinity panel).
+      DECLARED reference for Increment II; not invoked in Increment I (the stub
+      generator backs the offline spine). Requires an operator API key.

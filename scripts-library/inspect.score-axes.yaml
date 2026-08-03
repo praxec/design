@@ -1,0 +1,59 @@
+# scripts-library/inspect.score-axes.yaml
+#
+# The DISTINCTIVENESS (`G`) + FIT + SEED-ADHERENCE measurement (spec §3 / §4).
+# Thin, honest wrapper over the Task-1 measurement core `score.mjs` (which
+# imports features.mjs + calibrate.mjs and self-locates the golden fixtures via
+# import.meta.url). We DO NOT re-implement the metric here — single source of
+# truth stays in score.mjs — so this cap threads the pack's own scripts dir in
+# (the engine exposes no pack-directory scope; the orchestrator/operator passes
+# it as `scripts_dir`).
+#
+#   Args: [scripts_dir, artifact, seed_json, profile_json]
+#     scripts_dir   absolute path to this pack's scripts-library/ (holds score.mjs)
+#     artifact      rendered candidate HTML to score
+#     seed_json     the hard-constraint seed set as JSON ("" = none)
+#     profile_json  the app-type core-needs profile as JSON ("" = none)
+#
+# Emits score.mjs's JSON verbatim on stdout — { G, tau_suggested, distinctive,
+# seed_adherence, fit, features, detect } — auto-parsed to $.output.json.* for
+# the cap's output mapping.
+#
+# Fail-fast (all inherited or added here, no fabricated score):
+#   exit 2 ARTIFACT_UNSET            — no artifact argument
+#   exit 3 CANDIDATE_NOT_RENDERABLE  — artifact file absent
+#   exit 5 SCORE_TOOL_UNRESOLVED     — score.mjs not found under scripts_dir
+#   exit 3 SCORE_UNCALIBRATED (from score.mjs) — the metric cannot separate the
+#          golden set; it REFUSES to emit a fabricated G (spec §3.7). Non-zero
+#          propagates → the transition fails rather than shipping a bogus number.
+version: "1.0.0"
+scripts:
+  inspect.score-axes:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      ARTIFACT="${2:-}"
+      SEED="${3:-}"
+      PROFILE="${4:-}"
+
+      if [ -z "$ARTIFACT" ]; then
+        echo '{"error":"ARTIFACT_UNSET"}' >&2
+        exit 2
+      fi
+      SCORE="$SCRIPTS_DIR/score.mjs"
+      if [ ! -f "$SCORE" ]; then
+        printf '{"error":"SCORE_TOOL_UNRESOLVED","looked":"%s"}\n' "$SCORE" >&2
+        exit 5
+      fi
+      if [ ! -f "$ARTIFACT" ]; then
+        printf '{"error":"CANDIDATE_NOT_RENDERABLE","artifact":"%s"}\n' "$ARTIFACT" >&2
+        exit 3
+      fi
+
+      ARGS=("$SCORE" "$ARTIFACT")
+      [ -n "$SEED" ]    && ARGS+=(--seed "$SEED")
+      [ -n "$PROFILE" ] && ARGS+=(--profile "$PROFILE")
+      exec node "${ARGS[@]}"

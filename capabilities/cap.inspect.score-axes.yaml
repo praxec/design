@@ -1,0 +1,70 @@
+# capabilities/cap.inspect.score-axes.yaml
+#
+# Spec §3/§4 "cap.score.axes" — the DISTINCTIVENESS (`G`) + FIT-FOR-PURPOSE +
+# SEED-ADHERENCE measurement. Renamed to `cap.inspect.score-axes`: the cap verb
+# cloud (SPEC §4) has no `score` verb; `inspect` is the blessed deterministic
+# introspection verb (read-only, structured factual result), which is exactly
+# what this cap mints — per-axis signals, NO overall (spec §3.1/§4.2). The
+# intent ("score axes") is preserved as the name body.
+#
+# V6: `inspect` is Deterministic → primary must be `kind: script` (not cli).
+# The measurement is the Task-1 core `score.mjs` (single source of truth),
+# wrapped by the hash-pinned `inspect.score-axes` script. Because the engine
+# exposes no pack-directory scope, `scripts_dir` (the absolute path to this
+# pack's scripts-library/, holding score.mjs) is threaded in as an input the
+# orchestrator/operator supplies.
+#
+# Fail-fast: `SCORE_UNCALIBRATED` (from score.mjs) exits non-zero → this
+# transition FAILS rather than emitting a fabricated G (spec §3.7).
+workflows:
+  cap.inspect.score-axes:
+    verb: inspect
+    lifecycle: experimental
+    description: >
+      Compute the per-axis signals for a rendered candidate — G (structural-
+      geometry distance from the generic centroid), fit-for-purpose (app-type
+      core-needs checklist), and seed-adherence — by wrapping the calibrated
+      Task-1 measurement core (score.mjs). No overall score; refuses to emit a
+      fabricated G if the golden set is uncalibrated.
+    snippet:
+      inputs:
+        # Absolute path to this pack's scripts-library/ (holds score.mjs).
+        # The engine has no pack-dir scope, so the caller passes it explicitly.
+        scripts_dir: { type: string, required: true }
+        # Path to the rendered candidate HTML to score.
+        artifact:    { type: string, required: true }
+        # The hard-constraint seed set as a JSON string ("" = none).
+        seed:        { type: string, default: "" }
+        # The app-type core-needs profile as a JSON string ("" = none).
+        profile:     { type: string, default: "" }
+      outputs:
+        G:              { type: number }
+        distinctive:    { type: boolean }
+        tau_suggested:  { type: number }
+        seed_adherence: { type: object }
+        fit:            { type: object }
+        features:       { type: object }
+    initialState: scoring
+    states:
+      scoring:
+        goal: Score G + fit + seed-adherence via the calibrated measurement core.
+        transitions:
+          score:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.score-axes
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.artifact"
+                - "$.workflow.input.seed"
+                - "$.workflow.input.profile"
+            output:
+              G:              "$.output.json.G"
+              distinctive:    "$.output.json.distinctive"
+              tau_suggested:  "$.output.json.tau_suggested"
+              seed_adherence: "$.output.json.seed_adherence"
+              fit:            "$.output.json.fit"
+              features:       "$.output.json.features"
+      done: { terminal: true }

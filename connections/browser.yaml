@@ -1,0 +1,35 @@
+# connections/browser.yaml
+#
+# REFERENCE connection (operators COPY into their gateway config and GRANT —
+# NOT auto-loaded; the manifest maps the connections tier to an unused dir).
+# Browser MCP for `cap.render.thumbnail` (spec §2/§5/§7): screenshot each
+# candidate → a thumbnail ref. This is the SAME @playwright/mcp shape the QA
+# pack (cognitive-architectures) uses — reuse one browser MCP per deployment.
+#
+# EXCLUSIVE + POOLED under the `browser` pool: a run leases ONE browser server;
+# a render-touching state uses `tools: ["{{ $.run.leased.browser }}"]` and the
+# cap declares `exclusive_pools: [browser]`. Size the pool for your parallelism.
+#
+# INCREMENT I: the offline spine uses the STUB renderer (scripts-library
+# `run.render-thumbnail`, an SVG placeholder) so it runs headless with no
+# browser. Grant THIS connection and switch `cap.run.render-thumbnail`'s
+# executor to `kind: mcp` (connection `browser`) for real screenshots in
+# Increment II.
+#
+# WSL / headless note: @playwright/mcp's default `chrome` channel needs a
+# system Chrome. On WSL / bare containers, either point `--executable-path` at a
+# `npx playwright install chromium` download, or use `--browser firefox` after
+# `npx playwright install firefox` (see cognitive-architectures'
+# connections/browser-playwright.yaml for the full topology rationale).
+connections:
+  browser:
+    kind: mcp
+    command: npx
+    args: ["@playwright/mcp@latest", "--isolated"]
+    exclusive: true
+    pool: browser
+    startupTimeoutMs: 120000
+    idleTimeoutMs: 180000
+    description: >
+      Playwright browser MCP (reused from QA). Drives screenshot/thumbnail
+      rendering for design candidates. Exclusive, pooled under `browser`.

@@ -1,0 +1,28 @@
+# connections/impeccable-detect.yaml
+#
+# REFERENCE connection (operators COPY into their gateway config and GRANT —
+# this file is NOT auto-loaded; the manifest maps the connections tier to an
+# unused dir). CLI connection to Impeccable's deterministic anti-pattern
+# detector — the USABILITY floor of the annealing spine (spec §3.5 / §7).
+#
+# Impeccable is NOT a service: it is an Apache-2.0 skill pack (impeccable.style)
+# with no MCP/REST surface. `impeccable detect --json <file>` is a pure local
+# CLI — no auth, no network beyond the one-time `npx` package fetch (cached).
+# It emits a JSON array of anti-pattern findings (empty array = clean).
+#
+# NOTE: the design pack's `cap.verify.detect-antipatterns` invokes impeccable
+# through the hash-pinned scripts-library body `verify.antipatterns` (V6 forbids
+# a `kind: cli` primary on a cap), so wiring THIS connection is optional for that
+# cap. It is provided as the canonical reference for operators who prefer to
+# route impeccable through a named, centrally-granted CLI connection (e.g. to
+# pin a version, set env, or fix a working directory).
+connections:
+  impeccable_detect:
+    kind: cli
+    command: npx
+    # Callers append the artifact path: `npx impeccable detect --json <file>`.
+    args: ["--yes", "impeccable", "detect", "--json"]
+    description: >
+      Deterministic, LLM-free anti-pattern detector (Impeccable, Apache-2.0).
+      Emits a JSON array of findings; empty = usable. Backs the spine's
+      usability floor. No auth, no network after the first npx fetch.

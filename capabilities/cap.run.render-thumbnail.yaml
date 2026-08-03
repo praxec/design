@@ -1,0 +1,55 @@
+# capabilities/cap.run.render-thumbnail.yaml
+#
+# ============================ STUB — Increment I ============================
+# Spec §2/§5/§7 "cap.render.thumbnail". PRODUCTION is the browser MCP (reused
+# from QA): screenshot each candidate via the leased `browser` connection
+# (see connections/browser.yaml). That needs a live browser server + lease and
+# is NOT offline. To keep the Increment-I spine headless + offline, this cap is
+# STUB-BACKED: it emits a deterministic SVG placeholder thumbnail (clearly
+# marked "stub thumbnail"), NOT a real screenshot. In Increment II swap this
+# state's executor for `kind: mcp` (connection `browser`, tool
+# browser.screenshot) — V6 permits mcp for a Deterministic verb.
+# ===========================================================================
+#
+# Renamed from `cap.render.thumbnail`: the cap verb cloud (SPEC §4) has no
+# `render` verb; `run` is the honest blessed verb for the offline stub.
+#
+# V6: `run` is Deterministic → primary `kind: script`. Fail-fast (spec §5):
+# `CANDIDATE_NOT_RENDERABLE` when the candidate HTML is absent or unparseable.
+workflows:
+  cap.run.render-thumbnail:
+    verb: run
+    lifecycle: experimental
+    description: >
+      STUB (Increment I): emit a deterministic SVG placeholder thumbnail for a
+      candidate so the spine runs offline. Fail-fast CANDIDATE_NOT_RENDERABLE
+      when the candidate HTML does not exist or does not parse. Production path
+      is the browser MCP screenshot (connection `browser`).
+    snippet:
+      inputs:
+        # Path to the candidate HTML to render (from cap.run.generate-direction).
+        candidate:    { type: string, required: true }
+        # Directory to write the thumbnail into (created if absent).
+        out_dir:      { type: string, required: true }
+        # Optional stable id for the thumbnail filename.
+        candidate_id: { type: string, default: "" }
+      outputs:
+        thumbnail: { type: object }
+    initialState: rendering
+    states:
+      rendering:
+        goal: Emit a thumbnail ref for the candidate (stub SVG, offline).
+        transitions:
+          render:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: run.render-thumbnail
+              args:
+                - "$.workflow.input.candidate"
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.candidate_id"
+            output:
+              thumbnail: "$.output.json.thumbnail"
+      done: { terminal: true }

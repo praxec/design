@@ -1,0 +1,54 @@
+# capabilities/cap.verify.detect-antipatterns.yaml
+#
+# Spec §2/§3.5 "cap.detect.antipatterns" — the deterministic, LLM-free
+# USABILITY floor of the annealing spine. Renamed to `cap.verify.detect-
+# antipatterns` because the cap verb cloud (SPEC §4, 24 closed tokens) has no
+# `detect` verb; `verify` is the blessed deterministic gate verb, and V2 binds
+# the id stem's verb segment to the declared `verb:`. The intent ("detect
+# anti-patterns") is preserved as the name body.
+#
+# V6: `verify` is a Deterministic verb, so its primary executor must be
+# `kind: script` (or mcp) — NOT `kind: cli` (V6 rejects a cli primary on a cap).
+# The npx-impeccable-detect invocation therefore lives in the hash-pinned
+# scripts-library body `verify.antipatterns`, wrapped here as a governed cap.
+#
+# Emits the floor verdict into $.context: antipattern_count + usable + the raw
+# findings. The spine gates on `usable == true` (detect == 0) before a
+# candidate can reach the human prune.
+workflows:
+  cap.verify.detect-antipatterns:
+    verb: verify
+    lifecycle: experimental
+    description: >
+      Deterministic usability floor: run `impeccable detect --json` over a
+      rendered candidate and reduce the findings to { antipattern_count, usable
+      (== 0 anti-patterns), detect }. LLM-free; the count is the gate the spine
+      branches on before the human prune.
+    snippet:
+      inputs:
+        # Path to the rendered candidate HTML to gate.
+        artifact: { type: string, required: true }
+      outputs:
+        antipattern_count: { type: integer }
+        usable:            { type: boolean }
+        # `findings` (not `detect`): `detect` is an engine-owned hop-slot key —
+        # a plain cap context key may not shadow it (SLOT_KEY_ENGINE_OWNED).
+        findings:          { type: array }
+    initialState: detecting
+    states:
+      detecting:
+        goal: Run the deterministic anti-pattern detector over the candidate.
+        transitions:
+          detect:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.antipatterns
+              args:
+                - "$.workflow.input.artifact"
+            output:
+              antipattern_count: "$.output.json.antipattern_count"
+              usable:            "$.output.json.usable"
+              findings:          "$.output.json.detect"
+      done: { terminal: true }

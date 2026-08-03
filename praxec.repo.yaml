@@ -20,3 +20,9 @@ layout:
   flows:        orchestrators
   skills:       skills
   scripts:      scripts-library
+  # Connections stay OUT of the manifest (like cognitive-architectures): the
+  # files under connections/ are REFERENCE templates operators copy into their
+  # own gateway config and GRANT — not auto-loaded, unvalidated wholesale, and
+  # never spawned by simply mounting this pack. Mapping the tier to an unused
+  # dir keeps connections/ reference-only.
+  connections:  ._unused_reference_connections
