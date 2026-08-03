@@ -121,6 +121,37 @@ editorial. Fit-for-purpose is a **co-equal floor**, held by the symmetric mechan
 `detect = 0 (usable) AND fit ≥ floor (right) AND G > τ (distinctive)`. Novelty is the differentiator
 *among* candidates that are already usable, right, and distinctive.
 
+## 4b. Rollout — applying the chosen design across a target site (tiered economics)
+
+Design is only half the job: once the annealing converges on a **winner**, the design must be
+**rolled out across the whole target site** — and the two phases have opposite economics, so they
+bind different model tiers:
+
+- **Design (converge)** — creative, high-value, *few* candidates → the **`design` affinity →
+  frontier tier** (Kimi3 / the 21st panel). Pay for taste here.
+- **Rollout (apply)** — mechanical propagation of an *already-decided* design system across *many*
+  surfaces → the **`rollout` affinity → commodity tier**. Applying fixed tokens + component
+  patterns, not inventing. praxec's affinity→model binding + the cost thesis (commodity by default,
+  frontier only where it earns it) keeps cost flat as the site grows.
+
+**`flow.rollout` (design-system capture → gated commodity fan-out → PR):**
+1. **Capture the design system** — extract from the winner the tokens (color/type/space/radius/
+   motion) + component patterns + the **DNA signature** (the geometry that makes `G` high). A
+   concrete artifact — this is what gets applied everywhere.
+2. **Enumerate surfaces** of the target site (pages/components) under a writable `repo_root`.
+3. **Fan out per surface** — a **commodity coding cap per surface** that applies the system,
+   **reusing `cognitive/cap.implement.*`** + the PR-open leaf (where `/design` meets the coding side).
+4. **Gate every rolled-out surface** — the critical poka-yoke: a naive commodity rollout **regresses
+   to generic** (the cheap model drifts back to the LLM default page-by-page — mode collapse in the
+   *application* phase). Each surface passes the **same gates**: `G > τ` (still distinctive, still
+   matches the winner's DNA), `detect = 0` (usable), `fit ≥ floor` (on-purpose). A regressing surface
+   **fails the gate and retries** (bounded), never ships. The design gates keep the commodity rollout
+   from eroding the design it applies. Coherence is free: one captured system → shared tokens.
+5. **Assemble + PR** on the target `repo_root`.
+
+Full pipeline: **anneal (frontier) → capture design system → gated rollout across the target repo
+(commodity) → PR.** Rollout proves you can *apply a distinctive design at scale without losing it*.
+
 ## 5. Capabilities (`design/cap.*`)
 
 | Capability | Kind | Role |
@@ -213,6 +244,15 @@ praxec/design
   `style-first` + `grid`; taste-profile learning to the flywheel; register 21st/Higgsfield.
 - **Increment III — the gallery cockpit.** Mission Control one-screen view (thumbnails + axis scores
   incl. G/fit + lineage tree + pick/compose). Consumes pack state; no pack change.
+- **Increment IV — rollout (§4b).** `flow.rollout`: capture the winner's design system → **gated
+  commodity fan-out** across a target site's surfaces (reuse `cognitive/cap.implement.*` + PR-open),
+  every surface held to `G>τ / detect=0 / fit≥floor` (anti-regression). `design`→frontier,
+  `rollout`→commodity affinities. Needs real generation wired (21st + Kimi) + curated corpora first.
+
+**Dogfood targets (when the flows + real generation are in):** run the full **anneal → capture →
+gated rollout** against the sibling repos **`allumata-site`** and **`preveti-site`** (wired as
+writable `repo_root`s). The real proof — surfaces pack bugs the stub can't (cf. the tflo-site QA
+dogfood).
 
 ## 10. Decisions & finer open items
 
@@ -238,3 +278,9 @@ fail-fast**, enforcing diversity as **hard, app-appropriate constraints + cross-
 deterministic Impeccable gate as the **usability floor**, and putting both floors on the **critical
 path** (TRIZ separations: novelty↔usability and novelty↔fit). Residual: corpus/profile curation
 (Low, operational).
+
+A third primary risk governs the **rollout** (§4b): **rollout-regression-to-generic** — commodity
+models mechanically applying the winner's design drift back to the cookie-cutter default surface by
+surface (S:High, P:High). Mitigated to Low by carrying the SAME `G`/`detect`/`fit` eligibility into
+the per-surface rollout loop (a regressing surface fails the gate + retries, never ships) — the
+design floors double as the rollout's anti-regression guard.
