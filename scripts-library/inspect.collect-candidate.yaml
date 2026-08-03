@@ -1,16 +1,22 @@
 # scripts-library/inspect.collect-candidate.yaml
 #
 # The ELIGIBILITY FLOOR + LEDGER-KEEPER for flow.anneal.structure-first
-# (spec §3 + §4). A candidate reaches the human prune ONLY if it clears ALL
-# THREE co-equal floors — the hard gate before the human ever sees it:
+# (spec §3 + §4; Increment I-f: the human is the fitness function). A candidate
+# reaches the human prune iff it clears the ONE hard floor — real usability:
 #
 #   eligible = (antipattern_count == 0)   # §3.5 usability floor (impeccable detect)
-#          AND (fit.score >= fit_floor)    # §4    fit-for-purpose floor
-#          AND (G > tau)                    # §3    distinctiveness floor
 #
-# The floors `tau` and `fit_floor` are PASSED IN (threaded from the flow's
-# inputs/config) — never hard-coded here or in the orchestrator (spec §6:
-# "Reference the eligibility thresholds from config/input, not magic numbers").
+# fit and G are DEMOTED TO ADVISORY (Increment I-f): repeated dogfood showed the
+# gate collapsing real, good spreads before the human — the taste authority —
+# could see them. fit is a CRUDE 4-signal structural proxy and G's genericness
+# call is unreliable on real designs (both per the project's own findings), so
+# neither HARD-BLOCKS any longer. They are still COMPUTED and carried on every
+# record (G, fit, the advisory `distinctive`/`fit_ok` booleans, tau, fit_floor,
+# warnings) so the contact sheet + the human prune show them — the human prunes.
+#
+# The advisory floors `tau` and `fit_floor` are still PASSED IN (threaded from
+# the flow's inputs/config) — never hard-coded here or in the orchestrator
+# (spec §6) — but used ONLY to compute the advisory booleans, never to gate.
 #
 # WHY A CO-LOCATED CAP (V13 / array-append): the transition-output language has
 # no array-append op, so the accumulation of the `eligible` set (and the full
@@ -39,7 +45,7 @@
 #   { eligible: array (records the human prune presents; each { id, name, ... }),
 #     scored: array (every scored candidate incl. rejected, with why),
 #     eligible_count: int (len(eligible) — the diverge gate's scalar),
-#     eligible_this: bool (did THIS candidate clear all three floors?) }
+#     eligible_this: bool (did THIS candidate clear the usability floor?) }
 version: "1.0.0"
 scripts:
   inspect.collect-candidate:
@@ -66,11 +72,13 @@ scripts:
 
       const fitScore = fit && typeof fit.score === "number" ? fit.score : null;
       const usable = antipatternCount === 0;
-      // fit_floor unmet (or unassessable) => NOT eligible — an honest floor,
-      // never a fabricated pass (spec §4.5 NO_FIT_FOR_PURPOSE symmetry).
+      // ADVISORY (Increment I-f) — computed + carried on every record so the
+      // contact sheet + human prune can show them, but they NO LONGER gate.
       const fitOk = fitScore !== null && fitScore >= fitFloor;
       const distinctive = Number.isFinite(G) && G > tau;
-      const eligible = usable && fitOk && distinctive;
+      // The ONE hard eligibility floor is real usability (impeccable detect).
+      // The human is the fitness function for fit + distinctiveness.
+      const eligible = usable;
 
       const gStr = Number.isFinite(G) ? G.toFixed(2) : "n/a";
       const fitStr = fitScore === null ? "n/a" : String(fitScore);
@@ -86,6 +94,12 @@ scripts:
         antipattern_count: antipatternCount,
         warnings,
         warning_count: warnings.length,
+        // ADVISORY fields (Increment I-f) carried on EVERY record so the contact
+        // sheet + human prune can show G/fit context — never gate on them.
+        distinctive,
+        fit_ok: fitOk,
+        tau,
+        fit_floor: fitFloor,
       };
 
       const scored = scoredIn.concat([Object.assign({}, record, {

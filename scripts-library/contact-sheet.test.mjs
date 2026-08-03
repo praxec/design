@@ -90,6 +90,17 @@ test("fit score renders as a badge", () => {
   assert.match(html, /fit 0\.9/, "the fit value must render in a badge");
 });
 
+test("G + fit badges are marked ADVISORY (Increment I-f: they never gate)", () => {
+  const out = freshOut();
+  const { contact_sheet } = buildContactSheet(THREE, out);
+  const html = readFileSync(contact_sheet.artifact, "utf8");
+  // Both the G and fit badges carry the advisory affordance class.
+  assert.match(html, /badge--advisory badge--g/, "G badge must be advisory-marked");
+  assert.match(html, /badge--advisory badge--fit/, "fit badge must be advisory-marked");
+  // The header states the one hard floor is usability and G/fit are advisory.
+  assert.match(html, /advisory only/i, "header must call G/fit advisory");
+});
+
 test("the nominal candidate:{artifact} nesting is also honoured", () => {
   const out = freshOut();
   const nominal = [

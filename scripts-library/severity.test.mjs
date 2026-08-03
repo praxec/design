@@ -196,3 +196,59 @@ test("collect: no warnings ⇒ empty array + warning_count 0 (back-compat defaul
   assert.deepEqual(out.eligible[0].warnings, []);
   assert.equal(out.eligible[0].warning_count, 0);
 });
+
+// ---------------------------------------------------------------------------
+// Increment I-f — fit + G are ADVISORY. The ONLY hard eligibility floor is real
+// usability (antipattern_count == 0). A candidate below fit_floor / below tau but
+// usability-clean is ELIGIBLE; the advisory booleans are carried, never gate.
+// ---------------------------------------------------------------------------
+test("I-f: fit BELOW floor but zero usability errors ⇒ ELIGIBLE (fit is advisory)", () => {
+  const out = collect({
+    tau: 1.5, fitFloor: 1.0, G: 2.0, fit: { score: 0.25 }, // 0.25 << 1.0 floor
+    antipatternCount: 0, candidate: { id: "lowfit", artifact: "/tmp/lowfit.html" },
+    thumbnail: {}, eligibleIn: [], scoredIn: [], warnings: [],
+  });
+  assert.equal(out.eligible_this, true, "low fit no longer blocks");
+  assert.equal(out.eligible_count, 1);
+  // The advisory boolean still records the sub-floor state, non-gating.
+  assert.equal(out.eligible[0].fit_ok, false);
+  assert.equal(out.scored[0].why.fit_ok, false);
+});
+
+test("I-f: G BELOW tau but zero usability errors ⇒ ELIGIBLE (G is advisory)", () => {
+  const out = collect({
+    tau: 1.549, fitFloor: 1.0, G: 0.4, fit: { score: 1 }, // 0.4 << tau
+    antipatternCount: 0, candidate: { id: "generic", artifact: "/tmp/generic.html" },
+    thumbnail: {}, eligibleIn: [], scoredIn: [], warnings: [],
+  });
+  assert.equal(out.eligible_this, true, "low G (generic) no longer blocks");
+  assert.equal(out.eligible_count, 1);
+  assert.equal(out.eligible[0].distinctive, false);
+  assert.equal(out.scored[0].why.distinctive, false);
+});
+
+test("I-f: a real usability error is STILL the hard floor ⇒ NOT eligible", () => {
+  const out = collect({
+    tau: 1.5, fitFloor: 1.0, G: 2.0, fit: { score: 1 }, // fit + G both fine
+    antipatternCount: 1, candidate: { id: "broken", artifact: "/tmp/broken.html" },
+    thumbnail: {}, eligibleIn: [], scoredIn: [], warnings: [],
+  });
+  assert.equal(out.eligible_this, false);
+  assert.equal(out.eligible_count, 0);
+  assert.equal(out.scored[0].why.usable, false);
+});
+
+test("I-f: advisory fields (G, fit, distinctive, fit_ok, tau, fit_floor) present on the record", () => {
+  const out = collect({
+    tau: 1.549, fitFloor: 1.0, G: 0.4, fit: { score: 0.25 },
+    antipatternCount: 0, candidate: { id: "adv", artifact: "/tmp/adv.html" },
+    thumbnail: {}, eligibleIn: [], scoredIn: [], warnings: [],
+  });
+  const rec = out.eligible[0];
+  assert.equal(rec.G, 0.4);
+  assert.deepEqual(rec.fit, { score: 0.25 });
+  assert.equal(rec.distinctive, false);
+  assert.equal(rec.fit_ok, false);
+  assert.equal(rec.tau, 1.549);
+  assert.equal(rec.fit_floor, 1.0);
+});

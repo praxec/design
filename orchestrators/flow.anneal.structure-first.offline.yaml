@@ -263,7 +263,7 @@ workflows:
                   "$.context.cand_warnings":          warnings
 
       collecting:
-        goal: Apply eligibility floors; accumulate the eligible/scored ledgers; loop.
+        goal: Apply the usability floor; accumulate the eligible/scored ledgers; loop.
         transitions:
           collect:
             target: diverging
@@ -312,11 +312,12 @@ workflows:
                   "$.context.contact_sheet": contact_sheet
 
       # THE HUMAN PRUNE-AND-STEER (spec §6b) — present the pre-built contact sheet
-      # of the eligible spread (each already clears all three floors), park for the
-      # human to react PER candidate (verdict keep|branch|compose|reject, rank,
-      # likes, dislikes, notes) and keep ONE survivor, then aggregate the reactions
-      # into the `steer` the NEXT divergence anneals toward. The human is the
-      # genericness fitness function (§3: G advisory on real designs). A sub-cap so
+      # of the usable spread (each cleared the usability floor; fit/G shown as
+      # advisory badges), park for the human to react PER candidate (verdict
+      # keep|branch|compose|reject, rank, likes, dislikes, notes) and keep ONE
+      # survivor, then aggregate the reactions into the `steer` the NEXT divergence
+      # anneals toward. The human is the taste + genericness fitness function
+      # (§3/Increment I-f: fit + G advisory on real designs). A sub-cap so
       # `chosen` feeds refine's use.inputs (V13); the parent parks while the child
       # awaits the human. `steer` closes the loop into refining.
       pruning:

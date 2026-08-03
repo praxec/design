@@ -2,11 +2,13 @@
 #
 # THE INCREMENT-I ANNEALING SPINE (spec §6, DEFAULT mode). A governed,
 # measurement-gated evolutionary search: diverge many candidate directions,
-# score each on independent axes, and let ONLY the candidates that clear all
-# three eligibility floors reach a human prune — then refine over the survivor
-# with a tightened seed set. Distinctiveness (§3) and fit-for-purpose (§4) are
-# co-equal HARD FLOORS enforced BEFORE the human ever sees a candidate; a round
-# that collapses (zero eligible) fails fast rather than presenting junk.
+# score each on independent axes, and let every USABLE candidate reach a human
+# prune — then refine over the survivor with a tightened seed set. The ONE hard
+# eligibility floor is real usability (impeccable detect, zero blocking findings);
+# distinctiveness (§3) and fit-for-purpose (§4) are ADVISORY (Increment I-f: the
+# human is the fitness function for taste), carried on each record + shown on the
+# contact sheet as badges, never gating. A round collapses (fails fast) only when
+# EVERY candidate has a real usability error — never on low fit/G.
 #
 # LOOP (spec §6):
 #   diverging → rendering → scoring → gating → collecting ↺  (fan-out over seeds)
@@ -33,16 +35,19 @@
 #
 # FAIL-FAST (never paper over):
 #   - PURPOSE_UNSET        — no app_type ⇒ refuse to generate (spec §4.5).
-#   - DIVERGENCE_COLLAPSED — a round yields ZERO eligible candidates (all G<τ or
-#     all failing a floor) ⇒ FAIL, do NOT present a collapsed/empty set (spec §9).
-#     Bounded above by max_rounds; the collapse itself is the floor doing its job.
+#   - DIVERGENCE_COLLAPSED — a round yields ZERO eligible candidates, i.e. EVERY
+#     candidate has a real usability error (all antipattern_count>0) ⇒ FAIL, do
+#     NOT present a collapsed/empty set (spec §9). Fit/G never cause a collapse
+#     (advisory, Increment I-f). Bounded above by max_rounds; the usability floor
+#     doing its job.
 #   - CANDIDATE_NOT_RENDERABLE — inherited from cap.run.render-thumbnail's own
 #     fail-fast (a missing/unparseable artifact fails the render child → the
 #     chain fails and the flow parks at `rendering`); not re-implemented here.
 #
-# THRESHOLDS (spec §6: "from config/input, not magic numbers"): τ (`tau`) and the
-# fit floor (`fit_floor`) are INPUTS threaded into cap.inspect.collect-candidate;
-# no eligibility constant is hard-coded in this flow.
+# ADVISORY THRESHOLDS (spec §6: "from config/input, not magic numbers"): τ (`tau`)
+# and the fit floor (`fit_floor`) are INPUTS threaded into cap.inspect.collect-
+# candidate; no constant is hard-coded in this flow. Increment I-f: they compute
+# the ADVISORY distinctive/fit_ok badges only — they no longer gate eligibility.
 #
 # Requires (design/*): cap.run.set-seeds, cap.run.generate-direction,
 # cap.run.render-thumbnail, cap.inspect.score-axes, cap.verify.detect-antipatterns,
@@ -98,19 +103,21 @@ workflows:
 
   # ---------------------------------------------------------------------
   # The ELIGIBILITY FLOOR + eligible/scored LEDGER. Computes eligibility
-  # (detect==0 AND fit>=fit_floor AND G>tau) in code and appends the
-  # candidate to the eligible set only if it clears all three — the hard
-  # gate before the human ever sees it. Snippet-typed so `eligible` /
-  # `eligible_count` are first-class slots (V13).
+  # (antipattern_count==0 — real usability ONLY) in code and appends the
+  # candidate to the eligible set iff it is usable — the hard gate before the
+  # human ever sees it. fit/G are ADVISORY (Increment I-f), carried on the
+  # record but non-gating. Snippet-typed so `eligible` / `eligible_count` are
+  # first-class slots (V13).
   # ---------------------------------------------------------------------
   cap.inspect.collect-candidate:
     verb: inspect
     lifecycle: experimental
     description: >
-      Compute the three-floor eligibility (usable AND fit>=floor AND G>tau) for
-      a scored candidate and accumulate the eligible + scored ledgers in code.
-      The eligibility floors (tau, fit_floor) are passed in, not hard-coded. Only
-      eligible candidates enter the set the human prune presents.
+      Compute the usability eligibility floor (antipattern_count==0) for a scored
+      candidate and accumulate the eligible + scored ledgers in code. fit and G
+      are ADVISORY (Increment I-f): still computed + carried on every record (with
+      the advisory tau/fit_floor booleans) but never gating — the human is the
+      taste fitness function. Only usable candidates enter the human prune's set.
     snippet:
       inputs:
         tau:               { type: number,  required: true }
@@ -133,7 +140,7 @@ workflows:
     initialState: collecting
     states:
       collecting:
-        goal: Apply the three eligibility floors; accumulate the ledgers in code.
+        goal: Apply the usability eligibility floor; accumulate the ledgers in code.
         transitions:
           collect:
             target: done
@@ -210,11 +217,11 @@ workflows:
     description: >
       Structure-first annealing spine (Increment I): diverge N candidates over an
       app-appropriate seed set, render + score (G + fit + seed-adherence) + detect
-      each as sub-instances, and present ONLY the candidates clearing all three
-      eligibility floors (detect==0 AND fit>=floor AND G>tau) to a human prune,
+      each as sub-instances, and present every USABLE candidate (antipattern_count
+      == 0; fit + G carried as ADVISORY badges, Increment I-f) to a human prune,
       then refine over the survivor with a tightened seed set — bounded by
-      max_rounds. Fails fast on PURPOSE_UNSET and DIVERGENCE_COLLAPSED (never
-      presents a collapsed set). Run-tree lineage is the exploration record.
+      max_rounds. Fails fast on PURPOSE_UNSET and DIVERGENCE_COLLAPSED (only when
+      every candidate has a usability error). Run-tree lineage is the record.
     inputs:
       # The purpose (spec §4): app-type gate + the core-needs profile threaded to
       # scoring. app_type "" ⇒ PURPOSE_UNSET (Increment I takes purpose as input,
@@ -226,9 +233,11 @@ workflows:
       seeds:       { type: array,  default: [] }
       # Candidates per round (the fan-out cap).
       n:           { type: integer, default: 3 }
-      # Eligibility floors (spec §6: from config/input, NOT magic numbers).
-      tau:         { type: number, default: 1.549 }   # G distinctiveness floor (Task-1 calibrated)
-      fit_floor:   { type: number, default: 1.0 }     # fit-for-purpose floor
+      # ADVISORY thresholds (Increment I-f: fit/G no longer gate — they compute
+      # the advisory distinctive/fit_ok badges). From config/input, not magic
+      # numbers (spec §6).
+      tau:         { type: number, default: 1.549 }   # G distinctiveness advisory (Task-1 calibrated)
+      fit_floor:   { type: number, default: 1.0 }     # fit-for-purpose advisory
       # Abs path to this pack's scripts-library/ (holds score.mjs) — the engine
       # exposes no pack-dir scope, so the operator threads it (Task-2 seam).
       scripts_dir: { type: string, default: "" }
@@ -343,8 +352,8 @@ workflows:
                   "$.context.seed_idx":     next_idx
 
       # BRANCH on the fan-out phase + the eligibility scalar. Exhausted with
-      # zero eligible ⇒ DIVERGENCE_COLLAPSED (never present a collapsed set);
-      # with >=1 eligible ⇒ the human prune.
+      # zero eligible (every candidate has a usability error) ⇒ DIVERGENCE_
+      # COLLAPSED (never present a collapsed set); with >=1 usable ⇒ human prune.
       diverge_gate:
         transitions:
           generate:
@@ -470,10 +479,10 @@ workflows:
                   "$.context.cand_antipattern_count": antipattern_count
                   "$.context.cand_warnings":          warnings
 
-      # COLLECT — apply the three eligibility floors + accumulate the ledgers in
-      # code, then LOOP back to diverge the next seed.
+      # COLLECT — apply the usability eligibility floor + accumulate the ledgers
+      # in code (fit/G carried as advisory), then LOOP back to diverge next seed.
       collecting:
-        goal: Apply eligibility floors; accumulate the eligible/scored ledgers; loop.
+        goal: Apply the usability floor; accumulate the eligible/scored ledgers; loop.
         transitions:
           collect:
             target: diverging
@@ -522,11 +531,12 @@ workflows:
                   "$.context.contact_sheet": contact_sheet
 
       # THE HUMAN PRUNE-AND-STEER (spec §6b) — present the pre-built contact sheet
-      # of the eligible spread (each already clears all three floors), park for the
-      # human to react PER candidate (verdict keep|branch|compose|reject, rank,
-      # likes, dislikes, notes) and keep ONE survivor, then aggregate the reactions
-      # into the `steer` the NEXT divergence anneals toward. The human is the
-      # genericness fitness function (§3: G advisory on real designs). A sub-cap so
+      # of the usable spread (each cleared the usability floor; fit/G shown as
+      # advisory badges), park for the human to react PER candidate (verdict
+      # keep|branch|compose|reject, rank, likes, dislikes, notes) and keep ONE
+      # survivor, then aggregate the reactions into the `steer` the NEXT divergence
+      # anneals toward. The human is the taste + genericness fitness function
+      # (§3/Increment I-f: fit + G advisory on real designs). A sub-cap so
       # `chosen` feeds refine's use.inputs (V13); the parent parks while the child
       # awaits the human. `steer` closes the loop into refining.
       pruning:

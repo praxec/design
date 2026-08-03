@@ -110,8 +110,8 @@ export function buildContactSheet(candidates, outDir) {
           <div class="cell-id">${esc(id)}</div>
           <div class="cell-name">${esc(name)}</div>
           <div class="badges">
-            <span class="badge badge--g" title="distinctiveness G">G ${esc(gBadge)}</span>
-            <span class="badge badge--fit" title="fit-for-purpose score">fit ${esc(fitBadge)}</span>
+            <span class="badge badge--advisory badge--g" title="distinctiveness G — advisory only, you decide">G ${esc(gBadge)}</span>
+            <span class="badge badge--advisory badge--fit" title="fit-for-purpose score — advisory only, you decide">fit ${esc(fitBadge)}</span>
           </div>
           ${flagsLine}
           ${renderLink}
@@ -144,6 +144,7 @@ export function buildContactSheet(candidates, outDir) {
   .cell-name { font-size: .78rem; opacity: .8; }
   .badges { display: flex; gap: .4rem; flex-wrap: wrap; }
   .badge { font-family: ui-monospace, monospace; font-size: .72rem; padding: .1rem .45rem; border-radius: .8rem; border: 1px solid currentColor; }
+  .badge--advisory { opacity: .65; border-style: dashed; }
   .quality-flags { display: flex; gap: .3rem; flex-wrap: wrap; }
   .flag { font-family: ui-monospace, monospace; font-size: .68rem; padding: .05rem .4rem; border-radius: .8rem; border: 1px dashed #b8860b; color: #8a6d00; }
   @media (prefers-color-scheme: dark) { .flag { color: #e0b84a; border-color: #e0b84a; } }
@@ -154,7 +155,7 @@ export function buildContactSheet(candidates, outDir) {
 <body>
 <header>
   <h1>Prune &amp; steer — ${candidates.length} eligible direction${candidates.length === 1 ? "" : "s"}</h1>
-  <p>Every direction below already cleared the hard floors (detect-clean, fit ≥ floor, G &gt; τ). You are the fitness function: compare side-by-side, then for each candidate give a verdict and say what you like / dislike — those reasons steer the next spread.</p>
+  <p>Every direction below already cleared the one hard floor — real usability (detect-clean, zero blocking findings). The G and fit badges are <strong>advisory only</strong> (dashed): a crude structural proxy, never a gate. You are the fitness function: compare side-by-side, then for each candidate give a verdict and say what you like / dislike — those reasons steer the next spread.</p>
   <p class="verdicts">Verdicts: <code>keep</code> survive · <code>branch</code> make variations · <code>compose</code> recombine · <code>reject</code> drop the lineage. Keep exactly one as the survivor to refine; note likes/dislikes per candidate.</p>
 </header>
 <main class="grid">
