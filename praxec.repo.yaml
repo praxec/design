@@ -1,0 +1,22 @@
+schema: praxec.repo/v1
+name: design
+namespace: design
+version: 0.0.0
+description: |
+  UI-design annealing pipeline as a governed praxec pack: maximize diversity
+  early (fan-out many directions), then progressively reduce entropy —
+  generate → score (per-axis) → HUMAN prune → refine → audit → code — until
+  one direction remains. Exploration lineage IS the praxec run tree.
+
+  DRAFT: only the spec (docs/) exists so far. Capabilities/orchestrators are
+  authored per the increment plan in docs/2026-08-03-annealing-ui-design-spec.md.
+
+  This is UI design (layout/aesthetics/components/motion) — distinct from
+  cognitive-architectures-max (UX/product/JTBD).
+
+# Layout: the default tier→dir names; only skills/scripts differ from defaults here.
+layout:
+  capabilities: capabilities
+  flows:        orchestrators
+  skills:       skills
+  scripts:      scripts-library
