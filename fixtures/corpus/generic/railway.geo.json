@@ -1,0 +1,32 @@
+{
+  "displayFont": "\"IBM Plex Serif\", Georgia, Cambria, \"Times New Roman\", serif, ui-serif, Georgia, Cambria, \"Times New Roman\", Times, serif",
+  "displayAlign": "center",
+  "maxFont": 54,
+  "maxRadius": 9999,
+  "gridTracks": [
+    1,
+    29,
+    1
+  ],
+  "asymFound": true,
+  "gradient": true,
+  "maxBorderW": 1,
+  "boldest": [
+    167,
+    139,
+    250
+  ],
+  "boldestSat": 0.9173553719008265,
+  "bodyBg": "rgb(19, 17, 28)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -1.96,
+  "displayLineHeight": 1.1199999999999999,
+  "displayCenterFrac": 0.496868896484375,
+  "weightMin": 400,
+  "weightMax": 800,
+  "distinctChromaticColors": 20,
+  "sidebarLike": false,
+  "transformComposed": true,
+  "offCenterHero": false,
+  "whitespaceRatio": 0
+}

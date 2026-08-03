@@ -9,13 +9,15 @@
 // force separation would show up as a diff, not a silent green.
 //
 // EMPIRICAL RESULT (2026-08-03, n=15 generic / 16 distinctive real sites):
-//   structural-G does NOT cleanly separate real designs — margin -0.51,
-//   status SCORE_UNCALIBRATED, no valid τ. The clean toy separation did not hold.
-//   BUT the metric is not noise: mean-G is ~1.4× higher for distinctive and the
-//   rank AUC is ~0.90. Signal, but not a hard eligibility floor. See
-//   docs/... / the corpus report. Failure modes: modern-minimal distinctive
-//   (are.na/cosmos/pudding) score low; incidental-grid generic (railway/shadcn)
-//   score high.
+//   structural-G STILL does NOT cleanly separate real designs — status
+//   SCORE_UNCALIBRATED, no valid τ. But adding two failure-mode features
+//   (intentional_asymmetry + minimal_polish) MEASURABLY narrowed the overlap:
+//   margin -0.51 → -0.28 and rank AUC 0.90 → 0.94. The named failure-mode items
+//   moved the right way (railway/shadcn/clerk G dropped; are.na/cosmos G rose) —
+//   see features.test.mjs. It remains a ranking PRIOR, not a hard eligibility
+//   floor: the binding maxGeneric is railway, whose serif+saturation+gradient cues
+//   ape distinctiveness through the *pre-existing* coarse axes, not the two added
+//   here. Crossing positive needs the deferred thumbnail image-embedding G.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -52,6 +54,14 @@ test("EMPIRICAL: structural-G does NOT cleanly separate the REAL corpus (honest 
   assert.equal(corpusCal.status, "SCORE_UNCALIBRATED");
   assert.equal(corpusCal.tau, null);
   assert.ok(corpusCal.margin <= 0, `expected overlap (margin<=0), got margin ${corpusCal.margin}`);
+});
+
+test("EMPIRICAL: the two failure-mode features NARROWED the overlap vs the -0.51 baseline (honest, still negative)", { skip: !haveCorpus }, () => {
+  // Pins the direction of the iteration: overlap shrank (margin moved toward 0)
+  // but did NOT cross positive. A regression that re-widened it, or a fudge that
+  // forced a false positive, both break this.
+  assert.ok(corpusCal.margin > -0.45, `margin should have improved past the -0.51 baseline, got ${corpusCal.margin}`);
+  assert.ok(corpusCal.margin < 0, `still honestly uncalibrated (margin<0), got ${corpusCal.margin}`);
 });
 
 test("EMPIRICAL: the metric still carries real RANK signal (not noise)", { skip: !haveCorpus }, () => {

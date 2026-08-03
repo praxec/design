@@ -1,0 +1,32 @@
+{
+  "displayFont": "-apple-system, system-ui, BlinkMacSystemFont, \"Segoe UI\", Roboto, Ubuntu, Arial, sans-serif",
+  "displayAlign": "start",
+  "maxFont": 24,
+  "maxRadius": 200,
+  "gridTracks": [
+    1,
+    1,
+    1
+  ],
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 2,
+  "boldest": [
+    0,
+    0,
+    238
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgba(0, 0, 0, 0)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -0.16,
+  "displayLineHeight": 1.2,
+  "displayCenterFrac": 0.7625,
+  "weightMin": 400,
+  "weightMax": 600,
+  "distinctChromaticColors": 3,
+  "sidebarLike": false,
+  "transformComposed": true,
+  "offCenterHero": true,
+  "whitespaceRatio": 0.8952983338832855
+}

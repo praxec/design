@@ -1,6 +1,6 @@
 {
   "description": "REAL-design calibration corpus. Each item is a self-contained snapshot of a live URL's computed design geometry (via snapshot.mjs), labeled by human ground truth. Only items that actually rendered are listed. Provenance: fixtures/corpus/sources.json.",
-  "generatedAt": "2026-08-03T07:12:29.550Z",
+  "generatedAt": "2026-08-03T13:54:41.452Z",
   "counts": {
     "generic": 15,
     "distinctive": 16
@@ -10,186 +10,217 @@
   "items": [
     {
       "file": "generic/shadcn-ui.html",
+      "geo": "generic/shadcn-ui.geo.json",
       "slug": "shadcn-ui",
       "label": "generic",
       "source": "https://ui.shadcn.com"
     },
     {
       "file": "generic/tw-salient.html",
+      "geo": "generic/tw-salient.geo.json",
       "slug": "tw-salient",
       "label": "generic",
       "source": "https://salient.tailwindui.com"
     },
     {
       "file": "generic/tw-spotlight.html",
+      "geo": "generic/tw-spotlight.geo.json",
       "slug": "tw-spotlight",
       "label": "generic",
       "source": "https://spotlight.tailwindui.com"
     },
     {
       "file": "generic/tw-studio.html",
+      "geo": "generic/tw-studio.geo.json",
       "slug": "tw-studio",
       "label": "generic",
       "source": "https://studio.tailwindui.com"
     },
     {
       "file": "generic/tw-commit.html",
+      "geo": "generic/tw-commit.geo.json",
       "slug": "tw-commit",
       "label": "generic",
       "source": "https://commit.tailwindui.com"
     },
     {
       "file": "generic/tw-pocket.html",
+      "geo": "generic/tw-pocket.geo.json",
       "slug": "tw-pocket",
       "label": "generic",
       "source": "https://pocket.tailwindui.com"
     },
     {
       "file": "generic/tw-transmit.html",
+      "geo": "generic/tw-transmit.geo.json",
       "slug": "tw-transmit",
       "label": "generic",
       "source": "https://transmit.tailwindui.com"
     },
     {
       "file": "generic/tw-keynote.html",
+      "geo": "generic/tw-keynote.geo.json",
       "slug": "tw-keynote",
       "label": "generic",
       "source": "https://keynote.tailwindui.com"
     },
     {
       "file": "generic/tw-syntax.html",
+      "geo": "generic/tw-syntax.geo.json",
       "slug": "tw-syntax",
       "label": "generic",
       "source": "https://syntax.tailwindui.com"
     },
     {
       "file": "generic/tw-primer.html",
+      "geo": "generic/tw-primer.geo.json",
       "slug": "tw-primer",
       "label": "generic",
       "source": "https://primer.tailwindui.com"
     },
     {
       "file": "generic/tw-radiant.html",
+      "geo": "generic/tw-radiant.geo.json",
       "slug": "tw-radiant",
       "label": "generic",
       "source": "https://radiant.tailwindui.com"
     },
     {
       "file": "generic/vercel.html",
+      "geo": "generic/vercel.geo.json",
       "slug": "vercel",
       "label": "generic",
       "source": "https://vercel.com"
     },
     {
       "file": "generic/supabase.html",
+      "geo": "generic/supabase.geo.json",
       "slug": "supabase",
       "label": "generic",
       "source": "https://supabase.com"
     },
     {
       "file": "generic/clerk.html",
+      "geo": "generic/clerk.geo.json",
       "slug": "clerk",
       "label": "generic",
       "source": "https://clerk.com"
     },
     {
       "file": "generic/railway.html",
+      "geo": "generic/railway.geo.json",
       "slug": "railway",
       "label": "generic",
       "source": "https://railway.com"
     },
     {
       "file": "distinctive/pudding.html",
+      "geo": "distinctive/pudding.geo.json",
       "slug": "pudding",
       "label": "distinctive",
       "source": "https://pudding.cool"
     },
     {
       "file": "distinctive/gov-uk.html",
+      "geo": "distinctive/gov-uk.geo.json",
       "slug": "gov-uk",
       "label": "distinctive",
       "source": "https://www.gov.uk"
     },
     {
       "file": "distinctive/npr-text.html",
+      "geo": "distinctive/npr-text.geo.json",
       "slug": "npr-text",
       "label": "distinctive",
       "source": "https://text.npr.org"
     },
     {
       "file": "distinctive/craigslist.html",
+      "geo": "distinctive/craigslist.geo.json",
       "slug": "craigslist",
       "label": "distinctive",
       "source": "https://craigslist.org"
     },
     {
       "file": "distinctive/berkshire.html",
+      "geo": "distinctive/berkshire.geo.json",
       "slug": "berkshire",
       "label": "distinctive",
       "source": "https://www.berkshirehathaway.com"
     },
     {
       "file": "distinctive/paulgraham.html",
+      "geo": "distinctive/paulgraham.geo.json",
       "slug": "paulgraham",
       "label": "distinctive",
       "source": "https://www.paulgraham.com/articles.html"
     },
     {
       "file": "distinctive/danluu.html",
+      "geo": "distinctive/danluu.geo.json",
       "slug": "danluu",
       "label": "distinctive",
       "source": "https://danluu.com"
     },
     {
       "file": "distinctive/are-na.html",
+      "geo": "distinctive/are-na.geo.json",
       "slug": "are-na",
       "label": "distinctive",
       "source": "https://www.are.na"
     },
     {
       "file": "distinctive/cosmos.html",
+      "geo": "distinctive/cosmos.geo.json",
       "slug": "cosmos",
       "label": "distinctive",
       "source": "https://www.cosmos.so"
     },
     {
       "file": "distinctive/mschf.html",
+      "geo": "distinctive/mschf.geo.json",
       "slug": "mschf",
       "label": "distinctive",
       "source": "https://mschf.com"
     },
     {
       "file": "distinctive/bloomberg-gfx.html",
+      "geo": "distinctive/bloomberg-gfx.geo.json",
       "slug": "bloomberg-gfx",
       "label": "distinctive",
       "source": "https://www.bloomberg.com/graphics/2015-whats-warming-the-world/"
     },
     {
       "file": "distinctive/worrydream.html",
+      "geo": "distinctive/worrydream.geo.json",
       "slug": "worrydream",
       "label": "distinctive",
       "source": "https://worrydream.com"
     },
     {
       "file": "distinctive/tonsky.html",
+      "geo": "distinctive/tonsky.geo.json",
       "slug": "tonsky",
       "label": "distinctive",
       "source": "https://tonsky.me"
     },
     {
       "file": "distinctive/sive-rs.html",
+      "geo": "distinctive/sive-rs.geo.json",
       "slug": "sive-rs",
       "label": "distinctive",
       "source": "https://sive.rs"
     },
     {
       "file": "distinctive/aworkinglibrary.html",
+      "geo": "distinctive/aworkinglibrary.geo.json",
       "slug": "aworkinglibrary",
       "label": "distinctive",
       "source": "https://aworkinglibrary.com"
     },
     {
       "file": "distinctive/readymag-showcase.html",
+      "geo": "distinctive/readymag-showcase.geo.json",
       "slug": "readymag-showcase",
       "label": "distinctive",
       "source": "https://readymag.com/examples/"

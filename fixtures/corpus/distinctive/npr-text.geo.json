@@ -1,0 +1,28 @@
+{
+  "displayFont": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+  "displayAlign": "start",
+  "maxFont": 24,
+  "maxRadius": 0,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 2,
+  "boldest": [
+    0,
+    0,
+    238
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgba(0, 0, 0, 0)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.3333333333333333,
+  "displayCenterFrac": 0.5,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 1,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.7992617840766907
+}

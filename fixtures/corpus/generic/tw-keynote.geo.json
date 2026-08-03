@@ -1,0 +1,29 @@
+{
+  "displayFont": "\"DM Sans\", \"DM Sans Fallback\"",
+  "displayAlign": "start",
+  "maxFont": 80,
+  "maxRadius": 40,
+  "gridTracks": [
+    1,
+    2,
+    2,
+    2
+  ],
+  "asymFound": true,
+  "gradient": true,
+  "maxBorderW": 1,
+  "boldest": null,
+  "boldestSat": 0,
+  "bodyBg": "rgba(0, 0, 0, 0)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -4,
+  "displayLineHeight": 1,
+  "displayCenterFrac": 0.5,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 0,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.2625107650756836
+}

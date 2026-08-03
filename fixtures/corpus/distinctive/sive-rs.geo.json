@@ -1,0 +1,28 @@
+{
+  "displayFont": "v",
+  "displayAlign": "start",
+  "maxFont": 40,
+  "maxRadius": 0,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 0,
+  "boldest": [
+    0,
+    0,
+    153
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(255, 241, 229)",
+  "bodyFontPx": 20,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.2,
+  "displayCenterFrac": 0.326458740234375,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 1,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.0959592518806458
+}

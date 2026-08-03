@@ -1,0 +1,32 @@
+{
+  "displayFont": "\"GDS Transport\", arial, sans-serif",
+  "displayAlign": "start",
+  "maxFont": 55,
+  "maxRadius": 0,
+  "gridTracks": [
+    1,
+    1,
+    1
+  ],
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 10,
+  "boldest": [
+    0,
+    112,
+    60
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(255, 255, 255)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.07,
+  "displayCenterFrac": 0.425,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 4,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.370034065246582
+}

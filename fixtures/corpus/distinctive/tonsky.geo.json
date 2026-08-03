@@ -1,0 +1,28 @@
+{
+  "displayFont": "\"IBM Plex Sans\", sans-serif",
+  "displayAlign": "start",
+  "maxFont": 30.4441,
+  "maxRadius": 4.16667,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 1,
+  "boldest": [
+    253,
+    219,
+    41
+  ],
+  "boldestSat": 0.9814814814814815,
+  "bodyBg": "rgb(253, 219, 41)",
+  "bodyFontPx": 17.9083,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.0999996715291305,
+  "displayCenterFrac": 0.5,
+  "weightMin": 400,
+  "weightMax": 600,
+  "distinctChromaticColors": 1,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.5133172620534897
+}

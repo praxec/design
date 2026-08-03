@@ -1,0 +1,28 @@
+{
+  "displayFont": "MSCHFSansMono, monospace, Arial, Helvetica, sans-serif",
+  "displayAlign": "start",
+  "maxFont": 57.7778,
+  "maxRadius": 0,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": true,
+  "maxBorderW": 2,
+  "boldest": [
+    255,
+    199,
+    0
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(0, 0, 0)",
+  "bodyFontPx": 57.7778,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 0.8615367840243139,
+  "displayCenterFrac": 0.86849365234375,
+  "weightMin": 400,
+  "weightMax": 400,
+  "distinctChromaticColors": 5,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": true,
+  "whitespaceRatio": 0
+}

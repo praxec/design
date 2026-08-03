@@ -1,0 +1,28 @@
+{
+  "displayFont": "HaasText, Arial, sans-serif",
+  "displayAlign": "center",
+  "maxFont": 30.8,
+  "maxRadius": 9999,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 5,
+  "boldest": [
+    255,
+    160,
+    40
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(255, 255, 255)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.2,
+  "displayCenterFrac": 0.495050048828125,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 4,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0
+}

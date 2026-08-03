@@ -37,12 +37,16 @@ async function main() {
     const dir = join(CORPUS, src.label);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const rel = join(src.label, `${src.slug}.html`);
+    const geoRel = join(src.label, `${src.slug}.geo.json`);
     const outFile = join(CORPUS, rel);
+    const geoFile = join(CORPUS, geoRel);
     process.stderr.write(`[snapshot] ${src.slug} <- ${src.url} ... `);
     try {
       const { geo, html } = await snapshotUrl(src.url, { timeoutMs: timeout });
       writeFileSync(outFile, html);
-      results.push({ slug: src.slug, label: src.label, url: src.url, file: rel, ok: true, geo });
+      // Cache the RICH raw geo blob so future feature iteration is free (no re-render).
+      writeFileSync(geoFile, JSON.stringify(geo, null, 2) + "\n");
+      results.push({ slug: src.slug, label: src.label, url: src.url, file: rel, geoFile: geoRel, ok: true, geo });
       process.stderr.write("ok\n");
     } catch (err) {
       results.push({ slug: src.slug, label: src.label, url: src.url, ok: false, error: String((err && err.message) || err) });
@@ -63,7 +67,7 @@ async function main() {
     },
     attempted: results.length,
     succeeded: ok.length,
-    items: ok.map((r) => ({ file: r.file, slug: r.slug, label: r.label, source: r.url })),
+    items: ok.map((r) => ({ file: r.file, geo: r.geoFile, slug: r.slug, label: r.label, source: r.url })),
     failures: results.filter((r) => !r.ok).map((r) => ({ slug: r.slug, label: r.label, url: r.url, error: r.error })),
   };
   writeFileSync(join(CORPUS, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

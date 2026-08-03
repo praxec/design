@@ -1,0 +1,41 @@
+{
+  "displayFont": "GeistSans, \"GeistSans Fallback\"",
+  "displayAlign": "left",
+  "maxFont": 64,
+  "maxRadius": 33554400,
+  "gridTracks": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "asymFound": false,
+  "gradient": true,
+  "maxBorderW": 0,
+  "boldest": [
+    0,
+    114,
+    245
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(250, 250, 250)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -3.84,
+  "displayLineHeight": 1,
+  "displayCenterFrac": 0.1921875,
+  "weightMin": 400,
+  "weightMax": 500,
+  "distinctChromaticColors": 2,
+  "sidebarLike": false,
+  "transformComposed": true,
+  "offCenterHero": true,
+  "whitespaceRatio": 0.4944934539794922
+}

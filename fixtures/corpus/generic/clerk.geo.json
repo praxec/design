@@ -1,0 +1,31 @@
+{
+  "displayFont": "geistNumbers, suisse, \"suisse Fallback\"",
+  "displayAlign": "center",
+  "maxFont": 64,
+  "maxRadius": 33554400,
+  "gridTracks": [
+    1,
+    2
+  ],
+  "asymFound": true,
+  "gradient": true,
+  "maxBorderW": 2,
+  "boldest": [
+    108,
+    71,
+    255
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(247, 247, 248)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -1.6,
+  "displayLineHeight": 1.125,
+  "displayCenterFrac": 0.5,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 5,
+  "sidebarLike": false,
+  "transformComposed": true,
+  "offCenterHero": false,
+  "whitespaceRatio": 0
+}

@@ -56,24 +56,55 @@ function pageGeometry() {
   });
 
   const cs = (el) => getComputedStyle(el);
+  const vw = window.innerWidth || 1280;
+  const vh = window.innerHeight || 800;
+
+  const hasOwnText = (el) =>
+    Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim().length > 1);
 
   // primary/display font = font of the element carrying the largest rendered text.
   let displayFont = cs(document.body).fontFamily;
   let displayAlign = cs(document.body).textAlign;
   let maxFontEl = 0;
   let maxFont = 0;
+  // NEW polish signals captured alongside the display element:
+  let displayLetterSpacing = 0; // px, 0 = normal
+  let displayLineHeight = 0; // ratio (line-height / font-size), 0 = unknown
+  let displayCenterFrac = 0.5; // horizontal center of display text as fraction of viewport width
   for (const el of vis) {
     const s = cs(el);
     const fs = px(s.fontSize);
     if (fs > maxFont) maxFont = fs;
-    const hasText = Array.from(el.childNodes).some(
-      (n) => n.nodeType === 3 && n.textContent.trim().length > 1
-    );
-    if (hasText && fs > maxFontEl) {
+    if (hasOwnText(el) && fs > maxFontEl) {
       maxFontEl = fs;
       displayFont = s.fontFamily;
       displayAlign = s.textAlign;
+      // letter-spacing: computed value is "normal" or "<n>px"
+      displayLetterSpacing = s.letterSpacing === "normal" ? 0 : px(s.letterSpacing);
+      // line-height: computed "normal" or "<n>px"; normalize to a ratio
+      const lh = s.lineHeight === "normal" ? 1.2 * fs : px(s.lineHeight);
+      displayLineHeight = fs > 0 ? lh / fs : 0;
+      const r = el.getBoundingClientRect();
+      displayCenterFrac = vw > 0 ? (r.left + r.width / 2) / vw : 0.5;
     }
+  }
+
+  // body base font size (for display-to-body type-scale ratio).
+  const bodyFontPx = px(cs(document.body).fontSize) || 16;
+
+  // font-weight spread across visible text elements (variable-weight hierarchy).
+  let weightMin = 900;
+  let weightMax = 100;
+  for (const el of vis) {
+    if (!hasOwnText(el)) continue;
+    const w = px(cs(el).fontWeight);
+    if (!w) continue;
+    if (w < weightMin) weightMin = w;
+    if (w > weightMax) weightMax = w;
+  }
+  if (weightMax < weightMin) {
+    weightMin = 400;
+    weightMax = 400;
   }
 
   // max corner radius across elements.
@@ -153,6 +184,9 @@ function pageGeometry() {
   };
   let boldest = null;
   let boldestSat = 0;
+  // palette restraint: count DISTINCT chromatic colors (quantized), ignoring
+  // near-black/near-white structural neutrals. A restrained palette uses few.
+  const chromaticSet = new Set();
   for (const el of vis) {
     const s = cs(el);
     for (const prop of ["color", "backgroundColor", "borderTopColor"]) {
@@ -162,12 +196,77 @@ function pageGeometry() {
       const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
       if (lum < 0.06 || lum > 0.96) continue; // ignore near-black/white structure
       const sv = sat(r, g, b);
+      if (sv > 0.12) {
+        // quantize to ~16 buckets/channel so near-duplicates collapse
+        chromaticSet.add(`${r >> 4}:${g >> 4}:${b >> 4}`);
+      }
       if (sv > boldestSat) {
         boldestSat = sv;
         boldest = [Math.round(r), Math.round(g), Math.round(b)];
       }
     }
   }
+  const distinctChromaticColors = chromaticSet.size;
+
+  // functional nav/sidebar signature: a tall, narrow column pinned to an edge
+  // carrying several links (app-shell chrome). Its asymmetry is INCIDENTAL.
+  let sidebarLike = false;
+  for (const el of vis) {
+    const r = el.getBoundingClientRect();
+    const narrow = r.width > 24 && r.width < vw * 0.28;
+    const tall = r.height > vh * 0.5;
+    const pinnedLeft = r.left < vw * 0.06;
+    const pinnedRight = r.right > vw * 0.94;
+    if (!(narrow && tall && (pinnedLeft || pinnedRight))) continue;
+    const s = cs(el);
+    const navish =
+      el.tagName === "NAV" ||
+      el.tagName === "ASIDE" ||
+      s.position === "fixed" ||
+      s.position === "sticky" ||
+      (el.getAttribute && el.getAttribute("role") === "navigation");
+    const links = el.querySelectorAll("a,[role='link'],button").length;
+    if (links >= 3 && (navish || links >= 5)) {
+      sidebarLike = true;
+      break;
+    }
+  }
+
+  // INTENTIONAL composition signals (compositional asymmetry not tied to nav):
+  // rotated/skewed elements, and an off-axis display heading.
+  let transformComposed = false;
+  for (const el of vis) {
+    const t = cs(el).transform;
+    if (!t || t === "none" || !t.startsWith("matrix")) continue;
+    const m = t.match(/matrix\(([^)]+)\)/);
+    if (!m) continue;
+    const p = m[1].split(",").map((x) => parseFloat(x));
+    // matrix(a,b,c,d,e,f): non-zero b or c ⇒ rotation/skew (not mere translate/scale)
+    if (Math.abs(p[1]) > 0.02 || Math.abs(p[2]) > 0.02) {
+      transformComposed = true;
+      break;
+    }
+  }
+  // off-center hero: the display heading sits notably off the horizontal axis and
+  // is NOT centered (a deliberate off-axis composition, not a centered hero).
+  const offCenterHero =
+    !/center/i.test(displayAlign || "") &&
+    (displayCenterFrac < 0.34 || displayCenterFrac > 0.66) &&
+    // left-flush body text at ~40px padding is the generic default, not composition;
+    // require the heading to be pulled well past a normal left margin or to the right.
+    (displayCenterFrac > 0.6 || displayCenterFrac < 0.22);
+
+  // whitespace generosity: fraction of the first two screens NOT covered by
+  // text-bearing leaf elements. Generous negative space reads as editorial polish.
+  const canvas = vw * vh * 2;
+  let textArea = 0;
+  for (const el of vis) {
+    if (!hasOwnText(el)) continue;
+    const r = el.getBoundingClientRect();
+    const a = Math.max(0, Math.min(r.width, vw)) * Math.max(0, Math.min(r.height, vh * 2));
+    textArea += a;
+  }
+  const whitespaceRatio = Math.max(0, Math.min(1, 1 - textArea / canvas));
 
   // background color of the body (fallback when no gradient).
   const bodyBg = cs(document.body).backgroundColor;
@@ -184,6 +283,18 @@ function pageGeometry() {
     boldest,
     boldestSat,
     bodyBg,
+    // ---- richer raw signals for polish + intentional-asymmetry features ----
+    bodyFontPx,
+    displayLetterSpacing,
+    displayLineHeight,
+    displayCenterFrac,
+    weightMin,
+    weightMax,
+    distinctChromaticColors,
+    sidebarLike,
+    transformComposed,
+    offCenterHero,
+    whitespaceRatio,
   };
 }
 

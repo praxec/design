@@ -1,0 +1,27 @@
+{
+  "displayFont": "Geist, \"Geist Fallback\"",
+  "displayAlign": "center",
+  "maxFont": 48,
+  "maxRadius": 33554400,
+  "gridTracks": [
+    11,
+    1
+  ],
+  "asymFound": true,
+  "gradient": true,
+  "maxBorderW": 2,
+  "boldest": null,
+  "boldestSat": 0,
+  "bodyBg": "rgba(0, 0, 0, 0)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -2.4,
+  "displayLineHeight": 1.0999999999999999,
+  "displayCenterFrac": 0.499993896484375,
+  "weightMin": 400,
+  "weightMax": 600,
+  "distinctChromaticColors": 0,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.6955804959535599
+}

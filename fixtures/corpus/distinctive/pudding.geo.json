@@ -1,0 +1,28 @@
+{
+  "displayFont": "\"Gooper SemiCondensed\", \"Iowan Old Style\", \"Times New Roman\", Times, serif",
+  "displayAlign": "start",
+  "maxFont": 32,
+  "maxRadius": 28,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": true,
+  "maxBorderW": 1,
+  "boldest": [
+    253,
+    227,
+    0
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(255, 255, 255)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -0.8,
+  "displayLineHeight": 1,
+  "displayCenterFrac": 0.10445556640625,
+  "weightMin": 400,
+  "weightMax": 900,
+  "distinctChromaticColors": 26,
+  "sidebarLike": false,
+  "transformComposed": true,
+  "offCenterHero": true,
+  "whitespaceRatio": 0.5660784024000167
+}

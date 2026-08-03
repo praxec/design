@@ -1,0 +1,41 @@
+{
+  "displayFont": "\"Cabinet Grotesk\", ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+  "displayAlign": "start",
+  "maxFont": 72,
+  "maxRadius": 33554400,
+  "gridTracks": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "asymFound": false,
+  "gradient": true,
+  "maxBorderW": 2,
+  "boldest": [
+    99,
+    102,
+    241
+  ],
+  "boldestSat": 0.8352941176470587,
+  "bodyBg": "rgba(0, 0, 0, 0)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -1.8,
+  "displayLineHeight": 1,
+  "displayCenterFrac": 0.274835205078125,
+  "weightMin": 400,
+  "weightMax": 800,
+  "distinctChromaticColors": 1,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0
+}

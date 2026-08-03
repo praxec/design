@@ -28,7 +28,7 @@ const SEED_CHECKS = {
     want === "square" ? f.square_corners >= 0.75 : f.square_corners < 0.5,
   type: (f, want, d) => d.font_class === want,
   grid: (f, want) =>
-    want === "asymmetric" ? f.asymmetric_grid >= 1 : f.asymmetric_grid < 1,
+    want === "asymmetric" ? f.intentional_asymmetry > 0 : f.intentional_asymmetry === 0,
   composition: (f, want) =>
     want === "off-center" ? f.not_centered >= 1 : f.not_centered < 1,
   palette: (f, want) =>
@@ -63,7 +63,7 @@ export function seedAdherence(features, detect, seed) {
 const NEED_SIGNALS = {
   density: (f) => f.not_centered >= 1, // dense layouts aren't centered single-column heroes
   hierarchy: (f) => f.display_scale > 0.2, // a display-scale type step = explicit hierarchy
-  scannability: (f) => f.asymmetric_grid >= 1 || f.not_centered >= 1,
+  scannability: (f) => f.intentional_asymmetry > 0 || f.not_centered >= 1,
   "low-chrome": (f) => f.no_gradient_bg >= 1, // no decorative gradient chrome
   hero: (f) => f.display_scale > 0.2, // marketing hero needs a large display moment
 };

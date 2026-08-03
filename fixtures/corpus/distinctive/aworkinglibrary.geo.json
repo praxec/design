@@ -1,0 +1,31 @@
+{
+  "displayFont": "chaparral-pro, \"Roboto Slab\", Cambria, Georgia, serif",
+  "displayAlign": "start",
+  "maxFont": 32,
+  "maxRadius": 10,
+  "gridTracks": [
+    3,
+    1
+  ],
+  "asymFound": true,
+  "gradient": true,
+  "maxBorderW": 1,
+  "boldest": [
+    242,
+    241,
+    238
+  ],
+  "boldestSat": 0.13333333333333283,
+  "bodyBg": "rgb(255, 255, 255)",
+  "bodyFontPx": 20,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.2,
+  "displayCenterFrac": 0.375,
+  "weightMin": 400,
+  "weightMax": 600,
+  "distinctChromaticColors": 1,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.7102834095954895
+}

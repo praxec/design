@@ -1,0 +1,28 @@
+{
+  "displayFont": "Avenir, sans-serif",
+  "displayAlign": "start",
+  "maxFont": 19,
+  "maxRadius": 0,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 1,
+  "boldest": [
+    255,
+    255,
+    0
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(16, 24, 58)",
+  "bodyFontPx": 13,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.2,
+  "displayCenterFrac": 0.5,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 3,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.6001897033452988
+}

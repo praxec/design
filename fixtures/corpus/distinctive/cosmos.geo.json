@@ -1,0 +1,28 @@
+{
+  "displayFont": "cosmosOracle, \"cosmosOracle Fallback\"",
+  "displayAlign": "center",
+  "maxFont": 74,
+  "maxRadius": 33554400,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": true,
+  "maxBorderW": 1,
+  "boldest": [
+    188,
+    54,
+    27
+  ],
+  "boldestSat": 0.7488372093023257,
+  "bodyBg": "lab(100 0 0)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": -3.7,
+  "displayLineHeight": 1,
+  "displayCenterFrac": 0.49609375,
+  "weightMin": 350,
+  "weightMax": 500,
+  "distinctChromaticColors": 4,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.7812559823172924
+}

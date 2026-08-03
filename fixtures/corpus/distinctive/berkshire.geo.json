@@ -1,0 +1,28 @@
+{
+  "displayFont": "\"Times New Roman\"",
+  "displayAlign": "-webkit-center",
+  "maxFont": 32,
+  "maxRadius": 0,
+  "gridTracks": null,
+  "asymFound": false,
+  "gradient": false,
+  "maxBorderW": 1,
+  "boldest": [
+    128,
+    0,
+    128
+  ],
+  "boldestSat": 1,
+  "bodyBg": "rgb(255, 255, 255)",
+  "bodyFontPx": 16,
+  "displayLetterSpacing": 0,
+  "displayLineHeight": 1.2,
+  "displayCenterFrac": 0.446807861328125,
+  "weightMin": 400,
+  "weightMax": 700,
+  "distinctChromaticColors": 1,
+  "sidebarLike": false,
+  "transformComposed": false,
+  "offCenterHero": false,
+  "whitespaceRatio": 0.8943670806884766
+}
