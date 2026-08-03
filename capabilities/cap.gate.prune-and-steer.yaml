@@ -1,0 +1,117 @@
+# capabilities/cap.gate.prune-and-steer.yaml
+#
+# THE PRUNE-AND-STEER GATE (spec §6b) — the enriched successor to cap.gate.prune.
+# Per §3, on real designs `G` is advisory not a hard floor, so the HUMAN PRUNE is
+# the genericness fitness function — and it must be richer than keep/reject.
+# Annealing needs a gradient; in a design pipeline the gradient is human taste.
+# So this gate ELICITS structured reactions per candidate and feeds the *reasons*
+# back as the STEER for the next divergence — the human doesn't just cut, steers.
+#
+# No bespoke cockpit — two pieces the pack already owns (spec §6b):
+#   1. Presentation = the browser: a deterministic contact-sheet.mjs (the
+#      `inspect.build-contact-sheet` script-skill) composes the eligible spread
+#      into ONE local self-contained contact-sheet.html the human opens (browser
+#      MCP optional). That sheet ref is threaded into this gate as `contact_sheet`.
+#   2. Feedback = the human gate (kind:human), the same park/resume HITL seam
+#      cap.gate.prune uses — but collecting { verdict, rank, likes, dislikes,
+#      notes } per candidate, plus the single survivor `keep_id` to refine.
+#
+# V6 / SPEC §4.1 ADAPTATION (why sheet-building is NOT a state in THIS cap):
+#   INVALID_PRIMARY_EXECUTOR requires a `gate`-verb (Coordination) cap's INITIAL
+#   state to carry a human/ask transition — a gate MUST lead with the human. So
+#   the "noop→build(script)→park" ordering sketched in spec §6b cannot live inside
+#   a gate cap (the script leaf would be initial). The build is therefore its own
+#   deterministic tool (`inspect.build-contact-sheet`, verb inspect) the
+#   orchestrator runs BEFORE this gate — the same decomposition flow.anneal already
+#   uses (render/score/detect are separate leaves feeding the gate). This cap is
+#   the human gate + its trailing deterministic steer-aggregation:
+#     awaiting_human (human, INITIAL) → validating (script) → done.
+#   Orchestrator wiring (build-sheet step → this gate → survivor feeds refine) is
+#   the SEPARATE later task; the cap + its scripts praxec-check standalone.
+#
+# V-grounding: verb `gate` is blessed; the human leaf is executor {kind: human};
+# the trailing deterministic leaf is executor {kind: script} (V6). `chosen` stays
+# a clean pick-by-eq object so the survivor feeds the refine step's use.inputs
+# (V13, the same reason cap.gate.prune is a sub-cap, not an inline human step).
+# The rich `feedback` array is inherently non-primitive, so this gate is resolved
+# PULL-only (V36: a push-elicitation form collects primitives — accepted here).
+workflows:
+  cap.gate.prune-and-steer:
+    verb: gate
+    lifecycle: experimental
+    description: >
+      Human prune-and-steer of the eligible candidate set: present the pre-built
+      contact sheet of the eligible spread, park for the human to react per
+      candidate (verdict keep|branch|compose|reject, rank, likes, dislikes,
+      notes) and keep ONE survivor, then aggregate the reactions into the steer
+      the next divergence anneals toward. The taste authority — no auto-select on
+      an LLM opinion (spec §3.4). Fail-fast on a partial resume (PRUNE_UNRESOLVED).
+    snippet:
+      inputs:
+        # The eligible candidate records (each { id, name, G, fit, thumbnail, artifact }).
+        candidates:    { type: array,  required: true }
+        # The pre-built contact sheet ref ({ artifact }) from inspect.build-contact-sheet.
+        contact_sheet: { type: object, required: true }
+        prompt:        { type: string, default: "Prune and steer: keep/branch/compose/reject each, and say what you like/dislike." }
+      outputs:
+        # The single survivor that feeds refine (MUST stay a pick-by-eq object, V13).
+        chosen:   { type: object }
+        # The aggregated steer for the next diverge: { amplify: [...], avoid: [...] }.
+        steer:    { type: object }
+        # The raw per-candidate reactions (evidence of the prune decision).
+        feedback: { type: array }
+    # feedback is produced at resume and consumed by validating (cross-state).
+    initialContext:
+      feedback: []
+    initialState: awaiting_human
+    states:
+
+      awaiting_human:
+        goal: Block; surface the contact sheet + eligible candidates; collect per-candidate reactions and the survivor.
+        transitions:
+          resolve:
+            target: validating
+            actor: human
+            presents: ["$.context.contact_sheet", "$.context.candidates"]
+            inputSchema:
+              type: object
+              required: [keep_id, feedback]
+              properties:
+                keep_id: { type: string }
+                feedback:
+                  type: array
+                  items:
+                    type: object
+                    required: [candidate_id, verdict, rank]
+                    properties:
+                      candidate_id: { type: string }
+                      verdict:      { type: string, enum: [keep, branch, compose, reject] }
+                      rank:         { type: integer }
+                      likes:        { type: array, items: { type: string } }
+                      dislikes:     { type: array, items: { type: string } }
+                      notes:        { type: string }
+            executor: { kind: human }
+            output:
+              chosen:
+                pick:
+                  from: "$.context.candidates"
+                  by: "id"
+                  eq: "$.arguments.keep_id"
+              feedback: "$.arguments.feedback"
+
+      validating:
+        goal: Refuse a partial prune; aggregate the reactions into the steer.
+        transitions:
+          validate:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.validate-prune
+              args:
+                - "$.workflow.input.candidates"
+                - "$.context.feedback"
+            output:
+              steer: "$.output.json.steer"
+
+      done: { terminal: true }

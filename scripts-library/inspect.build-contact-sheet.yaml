@@ -1,0 +1,52 @@
+# scripts-library/inspect.build-contact-sheet.yaml
+#
+# Thin, honest wrapper over the Task-1 presentation core `contact-sheet.mjs`
+# (spec §6b) — mirrors inspect.score-axes.yaml exactly: LOGIC lives in the tested
+# .mjs, this script-skill just locates it under the pack's own `scripts_dir` (the
+# engine exposes no pack-directory scope, so the orchestrator/operator threads it
+# in) and shells to `node`. We DO NOT re-implement the sheet here — single source
+# of truth stays in contact-sheet.mjs.
+#
+# Verb `inspect` (NOT `gate`): the blessed DETERMINISTIC introspection verb — this
+# leaf only reads candidate records and writes ONE read-only structured artifact
+# (the contact sheet). The human `gate` is a SEPARATE leaf in cap.gate.prune-and-
+# steer; composing the sheet is not itself the gate.
+#
+#   Args: [scripts_dir, candidates_json, out_dir]
+#     scripts_dir     absolute path to this pack's scripts-library/ (holds contact-sheet.mjs)
+#     candidates_json the eligible candidate array as a JSON string (the engine
+#                     stringifies an array/object script arg — same as cap.inspect.
+#                     collect-candidate's eligible_in) OR a path to a .json file
+#     out_dir         directory to write contact-sheet.html into
+#
+# Emits contact-sheet.mjs's JSON verbatim on stdout — { contact_sheet: { artifact } }
+# — auto-parsed to $.output.json.contact_sheet for the cap's output mapping.
+#
+# Fail-fast:
+#   exit 2 ARGS_UNSET                 — scripts_dir / candidates / out_dir missing
+#   exit 5 CONTACT_SHEET_TOOL_UNRESOLVED — contact-sheet.mjs not under scripts_dir
+#   exit 3 NO_CANDIDATES_TO_PRUNE (from contact-sheet.mjs) — empty eligible spread;
+#          never present nothing to the human. Non-zero propagates → transition fails.
+version: "1.0.0"
+scripts:
+  inspect.build-contact-sheet:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      CANDIDATES="${2:-}"
+      OUT_DIR="${3:-}"
+
+      if [ -z "$SCRIPTS_DIR" ] || [ -z "$CANDIDATES" ] || [ -z "$OUT_DIR" ]; then
+        echo '{"error":"ARGS_UNSET","need":["scripts_dir","candidates_json","out_dir"]}' >&2
+        exit 2
+      fi
+      TOOL="$SCRIPTS_DIR/contact-sheet.mjs"
+      if [ ! -f "$TOOL" ]; then
+        printf '{"error":"CONTACT_SHEET_TOOL_UNRESOLVED","looked":"%s"}\n' "$TOOL" >&2
+        exit 5
+      fi
+      exec node "$TOOL" "$CANDIDATES" "$OUT_DIR"

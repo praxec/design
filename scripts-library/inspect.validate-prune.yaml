@@ -1,0 +1,71 @@
+# scripts-library/inspect.validate-prune.yaml
+#
+# The RESUME VALIDATOR + STEER AGGREGATOR of cap.gate.prune-and-steer (spec §6b).
+# After the human resumes the parked gate with per-candidate reactions, this
+# deterministic leaf (a) refuses a silent partial prune, and (b) turns the raw
+# reactions into the annealing STEER the next divergence consumes.
+#
+# Verb `inspect`: deterministic, read-only over the candidate + feedback records,
+# emits ONE structured artifact (the steer). Not the human `gate` itself.
+#
+#   Args: [candidates_json, feedback_json]
+#     candidates_json  the presented eligible candidate array as JSON (each { id, ... })
+#     feedback_json    the human's per-candidate reactions as JSON — each
+#                      { candidate_id, verdict: keep|branch|compose|reject, rank,
+#                        likes[], dislikes[], notes }
+#
+# Emits { steer: { amplify: [...], avoid: [...] } } on stdout (→ $.output.json.steer):
+#   amplify = liked axes of the survivor(s) (verdict==keep) + the top-ranked entry
+#   avoid   = every disliked axis across the spread (deduped)
+# The tags are a closed vocab over the design feature axes (layout/type/color/
+# space/motion/feel), so amplify/avoid are machine-consumable by the next prompt.
+#
+# Fail-fast (spec §6b):
+#   exit 3 PRUNE_UNRESOLVED — a presented candidate id has NO feedback entry on
+#          resume (no silent partial prune). Non-zero propagates → transition fails.
+version: "1.0.0"
+scripts:
+  inspect.validate-prune:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic resume validator + steer aggregator. Always JSON on stdout.
+      function j(v, d) { try { const x = JSON.parse(v); return x === undefined ? d : x; } catch { return d; } }
+      const candidates = j(process.argv[2], []) || [];
+      const feedback = j(process.argv[3], []) || [];
+
+      // (a) No silent partial prune: every PRESENTED candidate must have a verdict.
+      const feedbackIds = new Set(feedback.map((f) => f && f.candidate_id));
+      const missing = candidates
+        .map((c) => (c && c.id) || "")
+        .filter((id) => id && !feedbackIds.has(id));
+      if (missing.length > 0) {
+        console.error(JSON.stringify({ error: "PRUNE_UNRESOLVED", missing }));
+        process.exit(3);
+      }
+
+      const uniq = (xs) => Array.from(new Set(xs.filter((x) => x != null && x !== "")));
+      const asArr = (x) => (Array.isArray(x) ? x : x == null || x === "" ? [] : [x]);
+
+      // (b) Aggregate the steer. amplify = likes of the survivor(s) + the top-ranked
+      // (lowest rank number) entry; avoid = every disliked axis across the spread.
+      const ranked = feedback
+        .filter((f) => f && typeof f.rank === "number")
+        .sort((a, b) => a.rank - b.rank);
+      const topRankId = ranked.length ? ranked[0].candidate_id : null;
+
+      const amplify = [];
+      const avoid = [];
+      for (const f of feedback) {
+        if (!f) continue;
+        avoid.push(...asArr(f.dislikes));
+        const isKeep = f.verdict === "keep";
+        const isTop = f.candidate_id === topRankId;
+        if (isKeep || isTop) amplify.push(...asArr(f.likes));
+      }
+
+      console.log(JSON.stringify({
+        steer: { amplify: uniq(amplify), avoid: uniq(avoid) },
+      }));
