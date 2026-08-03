@@ -80,6 +80,7 @@ workflows:
       cand_G:                0
       cand_fit:              {}
       cand_antipattern_count: 0
+      cand_warnings:         []
       contact_sheet:         {}
       steer:                 {}
       feedback:              []
@@ -259,6 +260,7 @@ workflows:
                   artifact: "$.context.candidate.artifact"
                 outputs:
                   "$.context.cand_antipattern_count": antipattern_count
+                  "$.context.cand_warnings":          warnings
 
       collecting:
         goal: Apply eligibility floors; accumulate the eligible/scored ledgers; loop.
@@ -280,6 +282,7 @@ workflows:
                   thumbnail:         "$.context.thumbnail"
                   eligible_in:       "$.context.eligible"
                   scored_in:         "$.context.scored"
+                  warnings:          "$.context.cand_warnings"
                 outputs:
                   "$.context.eligible":       eligible
                   "$.context.scored":         scored

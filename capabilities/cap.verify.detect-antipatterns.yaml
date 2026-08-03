@@ -21,9 +21,11 @@ workflows:
     lifecycle: experimental
     description: >
       Deterministic usability floor: run `impeccable detect --json` over a
-      rendered candidate and reduce the findings to { antipattern_count, usable
-      (== 0 anti-patterns), detect }. LLM-free; the count is the gate the spine
-      branches on before the human prune.
+      rendered candidate and split the findings by severity — { antipattern_count
+      (BLOCKING error/critical only), usable (== 0 blocking), findings (all),
+      warnings (non-blocking, carried as quality-flags), warning_count }. LLM-free;
+      the blocking count is the gate the spine branches on before the human prune,
+      while warnings surface to the human without hard-blocking (Increment I-e).
     snippet:
       inputs:
         # Path to the rendered candidate HTML to gate.
@@ -34,6 +36,11 @@ workflows:
         # `findings` (not `detect`): `detect` is an engine-owned hop-slot key —
         # a plain cap context key may not shadow it (SLOT_KEY_ENGINE_OWNED).
         findings:          { type: array }
+        # Non-blocking findings (warning/info/notice), carried as visible
+        # quality-flags for the human + the refine loop (Increment I-e). They do
+        # NOT count toward the floor (`antipattern_count` is blocking-only).
+        warnings:          { type: array }
+        warning_count:     { type: integer }
     initialState: detecting
     states:
       detecting:
@@ -51,4 +58,6 @@ workflows:
               antipattern_count: "$.output.json.antipattern_count"
               usable:            "$.output.json.usable"
               findings:          "$.output.json.detect"
+              warnings:          "$.output.json.warnings"
+              warning_count:     "$.output.json.warning_count"
       done: { terminal: true }

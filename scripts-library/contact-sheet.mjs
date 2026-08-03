@@ -3,7 +3,8 @@
 // "Presentation = the browser": the render step already writes each candidate to
 // a standalone HTML file. This deterministic core composes the ELIGIBLE spread
 // into ONE self-contained local `contact-sheet.html` — a labelled grid, one cell
-// per candidate: its stub/real thumbnail, id + name, G / fit badges, and a link
+// per candidate: its stub/real thumbnail, id + name, G / fit badges, a
+// quality-flags line (non-blocking `warnings` the human should see), and a link
 // to the full candidate render. Side-by-side compare is native (one page; open
 // cells in tabs). No external assets, no network — the sheet degrades to a file
 // the human just opens (`browser` MCP is an OPTIONAL walk-through, not required).
@@ -50,6 +51,20 @@ const hrefFrom = (outDir, p) => {
   return esc(rel || abs);
 };
 
+// Quality-flags (Increment I-e): the non-blocking `warnings` carried on the
+// record — findings that did NOT gate the candidate but the human should see.
+// Dedup by antipattern name, keeping a count, so 7× `cramped-padding` shows as
+// one chip `cramped-padding ×7`. Returns [] when there are no warnings.
+const warningsOf = (c) => {
+  const raw = c && Array.isArray(c.warnings) ? c.warnings : [];
+  const byKey = new Map();
+  for (const w of raw) {
+    const key = (w && (w.antipattern || w.name)) || "warning";
+    byKey.set(key, (byKey.get(key) || 0) + 1);
+  }
+  return [...byKey.entries()].map(([label, count]) => ({ label, count }));
+};
+
 // The fit score badge value: the fit object carries `.score`; tolerate a bare number.
 const fitScoreOf = (c) => {
   const fit = c && c.fit;
@@ -72,6 +87,15 @@ export function buildContactSheet(candidates, outDir) {
       const gBadge = gRaw === null ? "n/a" : gRaw.toFixed(2);
       const fitRaw = fitScoreOf(c);
       const fitBadge = fitRaw === null ? "n/a" : String(fitRaw);
+      const flags = warningsOf(c);
+      const flagsLine = flags.length
+        ? `<div class="quality-flags" title="non-blocking quality warnings — the human decides">${flags
+            .map(
+              (f) =>
+                `<span class="flag">⚠ ${esc(f.label)}${f.count > 1 ? ` ×${f.count}` : ""}</span>`,
+            )
+            .join("")}</div>`
+        : "";
       const render = hrefFrom(outDir, fullRenderOf(c));
       const thumb = hrefFrom(outDir, thumbOf(c));
       const thumbImg = thumb
@@ -89,6 +113,7 @@ export function buildContactSheet(candidates, outDir) {
             <span class="badge badge--g" title="distinctiveness G">G ${esc(gBadge)}</span>
             <span class="badge badge--fit" title="fit-for-purpose score">fit ${esc(fitBadge)}</span>
           </div>
+          ${flagsLine}
           ${renderLink}
         </figcaption>
       </figure>`;
@@ -119,6 +144,9 @@ export function buildContactSheet(candidates, outDir) {
   .cell-name { font-size: .78rem; opacity: .8; }
   .badges { display: flex; gap: .4rem; flex-wrap: wrap; }
   .badge { font-family: ui-monospace, monospace; font-size: .72rem; padding: .1rem .45rem; border-radius: .8rem; border: 1px solid currentColor; }
+  .quality-flags { display: flex; gap: .3rem; flex-wrap: wrap; }
+  .flag { font-family: ui-monospace, monospace; font-size: .68rem; padding: .05rem .4rem; border-radius: .8rem; border: 1px dashed #b8860b; color: #8a6d00; }
+  @media (prefers-color-scheme: dark) { .flag { color: #e0b84a; border-color: #e0b84a; } }
   .render-link { font-size: .8rem; margin-top: .2rem; }
   .render-link--missing { opacity: .6; }
 </style>

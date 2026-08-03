@@ -30,6 +30,10 @@
 #   $7 — thumbnail (JSON object; from cap.run.render-thumbnail)
 #   $8 — eligible_in (JSON array; the eligible ledger so far)
 #   $9 — scored_in (JSON array; the full scored ledger so far)
+#   $10 — warnings (JSON array; the non-blocking quality-flags for THIS candidate,
+#         from cap.verify.detect-antipatterns; carried into the record so the
+#         human sees them on the contact sheet. Blocking-only `antipattern_count`
+#         above still keys eligibility — these warnings are advisory, never gate.)
 #
 # Emits ONE JSON verdict on stdout, read at $.output.json.*; ALWAYS exits 0:
 #   { eligible: array (records the human prune presents; each { id, name, ... }),
@@ -55,6 +59,10 @@ scripts:
       const thumbnail = j(process.argv[8], {}) || {};
       const eligibleIn = j(process.argv[9], []) || [];
       const scoredIn = j(process.argv[10], []) || [];
+      // Non-blocking quality-flags for THIS candidate (Increment I-e). Carried
+      // into the record so the human sees them on the contact sheet; they do NOT
+      // affect eligibility (that keys off the blocking-only antipattern_count).
+      const warnings = j(process.argv[11], []) || [];
 
       const fitScore = fit && typeof fit.score === "number" ? fit.score : null;
       const usable = antipatternCount === 0;
@@ -76,6 +84,8 @@ scripts:
         artifact: candidate.artifact || "",
         seed: candidate.seed || {},
         antipattern_count: antipatternCount,
+        warnings,
+        warning_count: warnings.length,
       };
 
       const scored = scoredIn.concat([Object.assign({}, record, {

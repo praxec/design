@@ -2,8 +2,17 @@
 #
 # The deterministic USABILITY FLOOR of the annealing spine (spec §3.5 / §2).
 # Wraps `npx impeccable detect --json <artifact>` — a real, LLM-free anti-
-# pattern detector — and reduces its findings array to a floor verdict:
-#   { detect: [...], antipattern_count: N, usable: (N == 0) }.
+# pattern detector — and reduces its findings array to a floor verdict, SPLIT BY
+# SEVERITY (Increment I-e):
+#   { detect: [...],                    # the FULL findings array (all severities)
+#     antipattern_count: N,             # BLOCKING only (error/critical) — the floor input
+#     usable: (N == 0),                 # errors-only: "no usability-breaking findings"
+#     warnings: [{antipattern,name,severity,snippet}],  # non-blocking, carried as quality-flags
+#     warning_count: M }.
+# The floor gates on BLOCKING severity only; `warning`/`info`/`notice` findings
+# no longer hard-block a candidate — they surface to the human on the contact
+# sheet and feed the refine loop. FAIL SAFE: an unknown/missing severity is
+# treated as blocking, so a new high-severity name can never silently pass.
 #
 # NOTE (Task-1 finding, spec §3.5): `detect` is the USABILITY floor, NOT a
 # genericness signal — a clean generic design passes with zero anti-patterns.
@@ -64,5 +73,27 @@ scripts:
         process.exit(4);
       }
       const arr = Array.isArray(findings) ? findings : (findings.detect || []);
-      const count = arr.length;
-      console.log(JSON.stringify({ detect: arr, antipattern_count: count, usable: count === 0 }));
+      // SEVERITY SPLIT (Increment I-e): the usability FLOOR gates on BLOCKING
+      // findings only (error/critical). `warning`/`info`/`notice` are carried
+      // through as visible quality-flags — the human (taste authority) sees them
+      // on the contact sheet, the refine loop can act on them, but they no longer
+      // hard-block an otherwise-distinctive candidate. FAIL SAFE: any severity NOT
+      // in the known non-blocking set (incl. missing/unknown high-severity names)
+      // counts as blocking, so a new severity can never silently pass the floor.
+      const NON_BLOCKING = new Set(["warning", "info", "notice"]);
+      const isBlocking = (f) => !NON_BLOCKING.has(String((f && f.severity) || "").toLowerCase());
+      const blocking = arr.filter(isBlocking);
+      const warnings = arr.filter((f) => !isBlocking(f)).map((f) => ({
+        antipattern: f && f.antipattern,
+        name: f && f.name,
+        severity: f && f.severity,
+        snippet: f && f.snippet,
+      }));
+      const count = blocking.length; // BLOCKING-ONLY — the eligibility floor's input.
+      console.log(JSON.stringify({
+        detect: arr,
+        antipattern_count: count,
+        usable: count === 0,
+        warnings,
+        warning_count: warnings.length,
+      }));

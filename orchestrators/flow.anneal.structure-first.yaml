@@ -122,6 +122,9 @@ workflows:
         thumbnail:         { type: object,  required: true }
         eligible_in:       { type: array,   required: true }
         scored_in:         { type: array,   required: true }
+        # Non-blocking quality-flags for this candidate (Increment I-e), carried
+        # into the record for the human — advisory, never gates eligibility.
+        warnings:          { type: array,   default: [] }
       outputs:
         eligible:       { type: array }
         scored:         { type: array }
@@ -148,6 +151,7 @@ workflows:
                 - "$.workflow.input.thumbnail"
                 - "$.workflow.input.eligible_in"
                 - "$.workflow.input.scored_in"
+                - "$.workflow.input.warnings"
             output:
               eligible:       "$.output.json.eligible"
               scored:         "$.output.json.scored"
@@ -266,6 +270,7 @@ workflows:
       cand_G:                0
       cand_fit:              {}
       cand_antipattern_count: 0
+      cand_warnings:         []
       contact_sheet:         {}
       steer:                 {}
       feedback:              []
@@ -463,6 +468,7 @@ workflows:
                   artifact: "$.context.candidate.artifact"
                 outputs:
                   "$.context.cand_antipattern_count": antipattern_count
+                  "$.context.cand_warnings":          warnings
 
       # COLLECT — apply the three eligibility floors + accumulate the ledgers in
       # code, then LOOP back to diverge the next seed.
@@ -486,6 +492,7 @@ workflows:
                   thumbnail:         "$.context.thumbnail"
                   eligible_in:       "$.context.eligible"
                   scored_in:         "$.context.scored"
+                  warnings:          "$.context.cand_warnings"
                 outputs:
                   "$.context.eligible":       eligible
                   "$.context.scored":         scored

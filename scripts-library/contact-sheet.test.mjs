@@ -107,6 +107,33 @@ test("the nominal candidate:{artifact} nesting is also honoured", () => {
   assert.match(html, /href="[^"]*generic-01-saas-dark\.html"/, "candidate.artifact must be linked");
 });
 
+test("quality-flags: warnings render as deduped chips (⚠ name ×count)", () => {
+  const out = freshOut();
+  const withWarnings = [
+    {
+      ...THREE[0],
+      warnings: [
+        { antipattern: "cramped-padding", name: "Cramped padding", severity: "warning" },
+        { antipattern: "cramped-padding", name: "Cramped padding", severity: "warning" },
+        { antipattern: "wide-tracking", name: "Wide tracking", severity: "warning" },
+      ],
+    },
+  ];
+  const { contact_sheet } = buildContactSheet(withWarnings, out);
+  const html = readFileSync(contact_sheet.artifact, "utf8");
+  assert.match(html, /class="quality-flags"/, "a quality-flags line must be present");
+  assert.match(html, /⚠ cramped-padding ×2/, "repeated warning dedups to a ×count chip");
+  assert.match(html, /⚠ wide-tracking(?!\s*×)/, "a single warning renders without a ×count");
+});
+
+test("quality-flags: a candidate with no warnings renders no quality-flags line", () => {
+  const out = freshOut();
+  const { contact_sheet } = buildContactSheet(THREE, out); // THREE carry no warnings
+  const html = readFileSync(contact_sheet.artifact, "utf8");
+  assert.doesNotMatch(html, /class="quality-flags"/, "no warnings ⇒ no quality-flags line element");
+  assert.doesNotMatch(html, /⚠/, "no warnings ⇒ no warning chips");
+});
+
 test("empty array throws NO_CANDIDATES_TO_PRUNE", () => {
   assert.throws(() => buildContactSheet([], freshOut()), /NO_CANDIDATES_TO_PRUNE/);
 });
