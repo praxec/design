@@ -18,7 +18,8 @@
 
 import { extractFeatures } from "./features.mjs";
 import { euclid } from "./features.mjs";
-import { calibrateFromFixtures } from "./calibrate.mjs";
+import { loadCalibration, CALIBRATION_FILE } from "./calibrate.mjs";
+import { existsSync } from "node:fs";
 
 // ---- seed-adherence: a hard-constraint set checked against the vector -------
 // Same feature vector that powers G doubles as the seed-adherence check.
@@ -88,23 +89,35 @@ export function fitScore(features, profile) {
 
 // ---- CLI -------------------------------------------------------------------
 function parseArgs(argv) {
-  const out = { file: null, seed: null, profile: null };
+  const out = { file: null, seed: null, profile: null, calibrationFile: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--seed") out.seed = JSON.parse(argv[++i]);
     else if (a === "--profile") out.profile = JSON.parse(argv[++i]);
+    else if (a === "--calibration") out.calibrationFile = argv[++i];
     else if (!a.startsWith("--")) out.file = a;
   }
   return out;
 }
 
-export function score(file, { seed = null, profile = null } = {}) {
-  const cal = calibrateFromFixtures();
-  if (!cal.separates) {
+// score.mjs LOADS the calibration ARTIFACT (produced by `node calibrate.mjs`)
+// for its centroid + τ — it does NOT recompute them from the toy fixtures. This
+// is what lets calibration scale to any corpus. No fallback: a missing artifact,
+// or one whose corpus could not separate (status SCORE_UNCALIBRATED), fail-fasts.
+export function score(file, { seed = null, profile = null, calibrationFile = CALIBRATION_FILE } = {}) {
+  if (!existsSync(calibrationFile)) {
     const err = new Error(
-      "SCORE_UNCALIBRATED: the structural-signature metric cannot separate the golden set " +
-        `(max generic G ${cal.maxGeneric.toFixed(3)} >= min distinctive G ${cal.minDistinctive.toFixed(3)}). ` +
-        "Refusing to emit a fabricated score."
+      `SCORE_UNCALIBRATED: no calibration artifact at ${calibrationFile}. ` +
+        "Run `node calibrate.mjs` against a labeled corpus first."
+    );
+    err.code = "SCORE_UNCALIBRATED";
+    throw err;
+  }
+  const cal = loadCalibration(calibrationFile);
+  if (cal.status !== "CALIBRATED" || !cal.separates || cal.tau == null) {
+    const err = new Error(
+      "SCORE_UNCALIBRATED: the calibration corpus could not separate generic from distinctive " +
+        `(margin ${Number(cal.margin).toFixed(3)}). Refusing to emit a fabricated score.`
     );
     err.code = "SCORE_UNCALIBRATED";
     err.calibration = cal;
@@ -118,6 +131,7 @@ export function score(file, { seed = null, profile = null } = {}) {
     tau_suggested: cal.tau,
     distinctive: G > cal.tau,
     calibration_margin: cal.margin,
+    calibration_source: cal.source,
     seed_adherence: seedAdherence(fx.features, fx.detect, seed),
     fit: fitScore(fx.features, profile),
     features: fx.features,
@@ -127,13 +141,15 @@ export function score(file, { seed = null, profile = null } = {}) {
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
-  const { file, seed, profile } = parseArgs(process.argv.slice(2));
+  const { file, seed, profile, calibrationFile } = parseArgs(process.argv.slice(2));
   if (!file) {
-    console.error("usage: node score.mjs <html> [--seed <json>] [--profile <json>]");
+    console.error("usage: node score.mjs <html> [--seed <json>] [--profile <json>] [--calibration <artifact.json>]");
     process.exit(2);
   }
   try {
-    console.log(JSON.stringify(score(file, { seed, profile }), null, 2));
+    const opts = { seed, profile };
+    if (calibrationFile) opts.calibrationFile = calibrationFile;
+    console.log(JSON.stringify(score(file, opts), null, 2));
   } catch (err) {
     if (err.code === "SCORE_UNCALIBRATED") {
       console.error(JSON.stringify({ error: "SCORE_UNCALIBRATED", message: err.message }, null, 2));

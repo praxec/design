@@ -1,0 +1,227 @@
+{
+  "status": "SCORE_UNCALIBRATED",
+  "generatedAt": "2026-08-03T07:12:57.622Z",
+  "source": "corpus",
+  "provenance": {
+    "manifest": "fixtures/corpus/manifest.json",
+    "counts": {
+      "generic": 15,
+      "distinctive": 16
+    }
+  },
+  "featureKeys": [
+    "serif_or_display",
+    "no_overused_font",
+    "square_corners",
+    "asymmetric_grid",
+    "not_centered",
+    "no_gradient_bg",
+    "heavy_rules",
+    "display_scale",
+    "bold_palette"
+  ],
+  "genCentroid": [
+    0.06666666666666667,
+    0.8,
+    0.016666666666666666,
+    0.4,
+    0.7333333333333333,
+    0.26666666666666666,
+    0.18888888888888886,
+    0.2622222222222222,
+    0.3168432993031923
+  ],
+  "tau": null,
+  "margin": -0.5085801875212599,
+  "maxGeneric": 1.5001723962502806,
+  "minDistinctive": 0.9915922087290208,
+  "separates": false,
+  "scored": [
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/shadcn-ui.html",
+      "source": "https://ui.shadcn.com",
+      "label": "generic",
+      "G": 1.3315806247704078
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-salient.html",
+      "source": "https://salient.tailwindui.com",
+      "label": "generic",
+      "G": 1.1928783727253174
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-spotlight.html",
+      "source": "https://spotlight.tailwindui.com",
+      "label": "generic",
+      "G": 0.9760822659456422
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-studio.html",
+      "source": "https://studio.tailwindui.com",
+      "label": "generic",
+      "G": 1.232700857754384
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-commit.html",
+      "source": "https://commit.tailwindui.com",
+      "label": "generic",
+      "G": 0.7784216682475398
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-pocket.html",
+      "source": "https://pocket.tailwindui.com",
+      "label": "generic",
+      "G": 1.0566874853737178
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-transmit.html",
+      "source": "https://transmit.tailwindui.com",
+      "label": "generic",
+      "G": 0.9915922087290208
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-keynote.html",
+      "source": "https://keynote.tailwindui.com",
+      "label": "generic",
+      "G": 0.8728813064092761
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-syntax.html",
+      "source": "https://syntax.tailwindui.com",
+      "label": "generic",
+      "G": 0.7116461856830844
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-primer.html",
+      "source": "https://primer.tailwindui.com",
+      "label": "generic",
+      "G": 0.8236488474349558
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/tw-radiant.html",
+      "source": "https://radiant.tailwindui.com",
+      "label": "generic",
+      "G": 1.0918534687864425
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/vercel.html",
+      "source": "https://vercel.com",
+      "label": "generic",
+      "G": 0.9243285804412454
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/supabase.html",
+      "source": "https://supabase.com",
+      "label": "generic",
+      "G": 1.0327301064502168
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/clerk.html",
+      "source": "https://clerk.com",
+      "label": "generic",
+      "G": 1.2272877317370934
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/generic/railway.html",
+      "source": "https://railway.com",
+      "label": "generic",
+      "G": 1.5001723962502806
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/pudding.html",
+      "source": "https://pudding.cool",
+      "label": "distinctive",
+      "G": 1.3227125575141838
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/gov-uk.html",
+      "source": "https://www.gov.uk",
+      "label": "distinctive",
+      "G": 1.7061962216705178
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/npr-text.html",
+      "source": "https://text.npr.org",
+      "label": "distinctive",
+      "G": 1.7136526914292611
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/craigslist.html",
+      "source": "https://craigslist.org",
+      "label": "distinctive",
+      "G": 1.6327812957667398
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/berkshire.html",
+      "source": "https://www.berkshirehathaway.com",
+      "label": "distinctive",
+      "G": 1.9103843879716234
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/paulgraham.html",
+      "source": "https://www.paulgraham.com/articles.html",
+      "label": "distinctive",
+      "G": 1.5219182555158406
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/danluu.html",
+      "source": "https://danluu.com",
+      "label": "distinctive",
+      "G": 1.7840689008945385
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/are-na.html",
+      "source": "https://www.are.na",
+      "label": "distinctive",
+      "G": 0.9915922087290208
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/cosmos.html",
+      "source": "https://www.cosmos.so",
+      "label": "distinctive",
+      "G": 1.0282324387767985
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/mschf.html",
+      "source": "https://mschf.com",
+      "label": "distinctive",
+      "G": 1.6336093844358341
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/bloomberg-gfx.html",
+      "source": "https://www.bloomberg.com/graphics/2015-whats-warming-the-world/",
+      "label": "distinctive",
+      "G": 1.4936699740194266
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/worrydream.html",
+      "source": "https://worrydream.com",
+      "label": "distinctive",
+      "G": 1.5219182555158406
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/tonsky.html",
+      "source": "https://tonsky.me",
+      "label": "distinctive",
+      "G": 1.364591274084671
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/sive-rs.html",
+      "source": "https://sive.rs",
+      "label": "distinctive",
+      "G": 1.533434172586996
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/aworkinglibrary.html",
+      "source": "https://aworkinglibrary.com",
+      "label": "distinctive",
+      "G": 1.2824454529175986
+    },
+    {
+      "file": "/home/mc/working/design/fixtures/corpus/distinctive/readymag-showcase.html",
+      "source": "https://readymag.com/examples/",
+      "label": "distinctive",
+      "G": 1.4035451115571895
+    }
+  ]
+}

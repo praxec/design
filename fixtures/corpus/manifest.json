@@ -1,0 +1,212 @@
+{
+  "description": "REAL-design calibration corpus. Each item is a self-contained snapshot of a live URL's computed design geometry (via snapshot.mjs), labeled by human ground truth. Only items that actually rendered are listed. Provenance: fixtures/corpus/sources.json.",
+  "generatedAt": "2026-08-03T07:12:29.550Z",
+  "counts": {
+    "generic": 15,
+    "distinctive": 16
+  },
+  "attempted": 33,
+  "succeeded": 31,
+  "items": [
+    {
+      "file": "generic/shadcn-ui.html",
+      "slug": "shadcn-ui",
+      "label": "generic",
+      "source": "https://ui.shadcn.com"
+    },
+    {
+      "file": "generic/tw-salient.html",
+      "slug": "tw-salient",
+      "label": "generic",
+      "source": "https://salient.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-spotlight.html",
+      "slug": "tw-spotlight",
+      "label": "generic",
+      "source": "https://spotlight.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-studio.html",
+      "slug": "tw-studio",
+      "label": "generic",
+      "source": "https://studio.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-commit.html",
+      "slug": "tw-commit",
+      "label": "generic",
+      "source": "https://commit.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-pocket.html",
+      "slug": "tw-pocket",
+      "label": "generic",
+      "source": "https://pocket.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-transmit.html",
+      "slug": "tw-transmit",
+      "label": "generic",
+      "source": "https://transmit.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-keynote.html",
+      "slug": "tw-keynote",
+      "label": "generic",
+      "source": "https://keynote.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-syntax.html",
+      "slug": "tw-syntax",
+      "label": "generic",
+      "source": "https://syntax.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-primer.html",
+      "slug": "tw-primer",
+      "label": "generic",
+      "source": "https://primer.tailwindui.com"
+    },
+    {
+      "file": "generic/tw-radiant.html",
+      "slug": "tw-radiant",
+      "label": "generic",
+      "source": "https://radiant.tailwindui.com"
+    },
+    {
+      "file": "generic/vercel.html",
+      "slug": "vercel",
+      "label": "generic",
+      "source": "https://vercel.com"
+    },
+    {
+      "file": "generic/supabase.html",
+      "slug": "supabase",
+      "label": "generic",
+      "source": "https://supabase.com"
+    },
+    {
+      "file": "generic/clerk.html",
+      "slug": "clerk",
+      "label": "generic",
+      "source": "https://clerk.com"
+    },
+    {
+      "file": "generic/railway.html",
+      "slug": "railway",
+      "label": "generic",
+      "source": "https://railway.com"
+    },
+    {
+      "file": "distinctive/pudding.html",
+      "slug": "pudding",
+      "label": "distinctive",
+      "source": "https://pudding.cool"
+    },
+    {
+      "file": "distinctive/gov-uk.html",
+      "slug": "gov-uk",
+      "label": "distinctive",
+      "source": "https://www.gov.uk"
+    },
+    {
+      "file": "distinctive/npr-text.html",
+      "slug": "npr-text",
+      "label": "distinctive",
+      "source": "https://text.npr.org"
+    },
+    {
+      "file": "distinctive/craigslist.html",
+      "slug": "craigslist",
+      "label": "distinctive",
+      "source": "https://craigslist.org"
+    },
+    {
+      "file": "distinctive/berkshire.html",
+      "slug": "berkshire",
+      "label": "distinctive",
+      "source": "https://www.berkshirehathaway.com"
+    },
+    {
+      "file": "distinctive/paulgraham.html",
+      "slug": "paulgraham",
+      "label": "distinctive",
+      "source": "https://www.paulgraham.com/articles.html"
+    },
+    {
+      "file": "distinctive/danluu.html",
+      "slug": "danluu",
+      "label": "distinctive",
+      "source": "https://danluu.com"
+    },
+    {
+      "file": "distinctive/are-na.html",
+      "slug": "are-na",
+      "label": "distinctive",
+      "source": "https://www.are.na"
+    },
+    {
+      "file": "distinctive/cosmos.html",
+      "slug": "cosmos",
+      "label": "distinctive",
+      "source": "https://www.cosmos.so"
+    },
+    {
+      "file": "distinctive/mschf.html",
+      "slug": "mschf",
+      "label": "distinctive",
+      "source": "https://mschf.com"
+    },
+    {
+      "file": "distinctive/bloomberg-gfx.html",
+      "slug": "bloomberg-gfx",
+      "label": "distinctive",
+      "source": "https://www.bloomberg.com/graphics/2015-whats-warming-the-world/"
+    },
+    {
+      "file": "distinctive/worrydream.html",
+      "slug": "worrydream",
+      "label": "distinctive",
+      "source": "https://worrydream.com"
+    },
+    {
+      "file": "distinctive/tonsky.html",
+      "slug": "tonsky",
+      "label": "distinctive",
+      "source": "https://tonsky.me"
+    },
+    {
+      "file": "distinctive/sive-rs.html",
+      "slug": "sive-rs",
+      "label": "distinctive",
+      "source": "https://sive.rs"
+    },
+    {
+      "file": "distinctive/aworkinglibrary.html",
+      "slug": "aworkinglibrary",
+      "label": "distinctive",
+      "source": "https://aworkinglibrary.com"
+    },
+    {
+      "file": "distinctive/readymag-showcase.html",
+      "slug": "readymag-showcase",
+      "label": "distinctive",
+      "source": "https://readymag.com/examples/"
+    }
+  ],
+  "failures": [
+    {
+      "slug": "resend",
+      "label": "generic",
+      "url": "https://resend.com",
+      "error": "Navigation timeout of 40000 ms exceeded"
+    },
+    {
+      "slug": "stripe-press",
+      "label": "distinctive",
+      "url": "https://press.stripe.com",
+      "error": "Navigation timeout of 40000 ms exceeded"
+    }
+  ]
+}
