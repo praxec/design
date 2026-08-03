@@ -152,6 +152,41 @@ bind different model tiers:
 Full pipeline: **anneal (frontier) → capture design system → gated rollout across the target repo
 (commodity) → PR.** Rollout proves you can *apply a distinctive design at scale without losing it*.
 
+## 4c. Component design — annealing one component within an established site
+
+The third scope: design or upgrade a **single component** within a site whose design system is
+already in place. Same annealing spine, but the constraints **invert** and UX becomes first-class.
+
+- **Consistency gate (NEW) — replaces site-level "far from generic".** The component must **match**
+  the site's captured design system (tokens/DNA): `consistency ≥ floor`. (Site-level *maximized
+  distance* from the generic centroid; component-level *maximizes fit* to the site's own DNA.)
+- **Distinctiveness reframed to within-genre.** Don't ship a stock component (generic Bootstrap/
+  Material card) — express the site's DNA *in* the component. Component-`G` = distance from generic
+  *component* patterns, **while matching the site DNA**.
+- **Fit = the component's UX role (where UX enters).** A nav needs wayfinding/discoverability; a
+  form needs clarity + error/validation states; a table needs density + sort/filter; a CTA needs a
+  single prominent action. The UX role sources from **`-max` (UX engineering)** or a lightweight
+  component-purpose intake → the fit axis. This is the tightest `/design`(visual) ↔ `max`(UX)
+  composition point — your "combined with UX considerations."
+- **Two modes.** (a) **New component** — anneal from `{site system + UX role}`. (b) **Upgrade
+  existing** — a **warm start with the current component as candidate-0**: anneal improvements that
+  *beat candidate-0* on consistency/`G`/fit without regressing usability. "Upgrade" becomes
+  **objective** — a candidate ships only if it beats the baseline on the axes that matter.
+- **Apply = scoped single-surface** (`flow.rollout` restricted to the component's surface, gated by
+  consistency so it slots into the existing site coherently).
+
+`flow.anneal.component` reuses the measurement core + the annealing orchestrator + the scoped apply;
+the only new pieces are the **consistency-to-system gate**, the **UX-role fit**, and the
+**candidate-0 warm start**.
+
+**The three scopes, one spine + one gate family:**
+
+| Scope | Established | Explored | Fit axis | Distinctiveness | Apply |
+|---|---|---|---|---|---|
+| Site design | nothing | the whole system | app-type core needs | `G` far from generic | — |
+| Site rollout | the system | (mechanical) | app-type needs | `G` matches winner DNA | all surfaces (commodity) |
+| Component design | the site system (hard input) | one component | the component's UX role | within-genre (not stock) + **consistent** with DNA | one surface |
+
 ## 5. Capabilities (`design/cap.*`)
 
 | Capability | Kind | Role |
@@ -248,6 +283,11 @@ praxec/design
   commodity fan-out** across a target site's surfaces (reuse `cognitive/cap.implement.*` + PR-open),
   every surface held to `G>τ / detect=0 / fit≥floor` (anti-regression). `design`→frontier,
   `rollout`→commodity affinities. Needs real generation wired (21st + Kimi) + curated corpora first.
+
+- **Increment V — component design (§4c).** `flow.anneal.component` (new + upgrade modes) reusing
+  the spine + scoped apply; adds the **consistency-to-system gate**, the **UX-role fit** (composes
+  with `-max`), and the **candidate-0 warm start**. Constraints invert (match the site DNA, not flee
+  the generic centroid).
 
 **Dogfood targets (when the flows + real generation are in):** run the full **anneal → capture →
 gated rollout** against the sibling repos **`allumata-site`** and **`preveti-site`** (wired as
