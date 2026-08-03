@@ -139,6 +139,12 @@ editorial. Fit-for-purpose is a **co-equal floor**, held by the symmetric mechan
 | `cap.render.hero` | rest (Higgsfield) | hero + motion, finalist only |
 | `cap.build.component` | agent (coding affinity, reuse `cognitive/*`) | production build of the winner |
 
+**Engine grounding (Task 2):** cap names bind to the engine's **blessed verb cloud** (V1/V2) and a
+deterministic cap uses `kind: script`/`mcp`, not `cli` (V6). The table's names are intent; the
+**authored Increment-I ids** are `cap.run.generate-direction`, `cap.run.render-thumbnail`,
+`cap.inspect.score-axes` (threads `scripts_dir`), `cap.verify.detect-antipatterns` — CLIs live in
+hash-pinned `scripts-library/` bodies. Later caps map to blessed verbs the same way.
+
 **Recombination detail:** `cap.recombine.aspects` takes `{ parents: [candidate_ids], aspects: {header:A, cards:B, palette:C, type:D, motion:E} }` → a synthesized candidate. It **re-harmonizes** (spliced aspects are reconciled via the Impeccable design vocabulary, not pasted) and is subject to the **same eligibility** (detect + fit + G) plus a coherence check — an incoherent frankendesign is rejected, never shipped. This is the evolutionary **crossover** operator; the prune gate's *compose* action invokes it with the human's aspect selection.
 
 **Model affinity split:** *generation/recombine* caps bind a **design affinity** — a **multi-model
