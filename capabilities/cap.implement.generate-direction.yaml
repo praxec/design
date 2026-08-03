@@ -100,14 +100,25 @@ workflows:
               affinity: design
               requires_file_write: true
               max_seconds: 900
+              # EXPLICIT file host rooted at the (absolute) out_dir so write_file /
+              # read_file are ALWAYS granted. CompositeToolHost only exposes file
+              # tools when the connection root is ABSOLUTE (file_tools.rs:361-369);
+              # relying on the gateway auto_drive_tools `file:{{ $.run.repo_root }}`
+              # failed for this sub-workflow agent (root rendered empty → NO file
+              # tools → AGENT_NO_FILE_WRITES). A per-state `tools:` overrides the
+              # gateway default; generation needs only the file host (read the
+              # content, write the candidate), no MCP tools.
+              tools:
+                - "file:{{ $.workflow.input.out_dir }}"
               owned_files:
                 - "{{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html"
               goal: >
                 Generate ONE UI-design direction as a single self-contained,
-                renderable HTML file and WRITE it with your file-write tool to
-                EXACTLY this path (create the directory if needed):
+                renderable HTML file and WRITE it with your file-write tool. Your
+                file tools are ROOTED at your working directory — use RELATIVE
+                paths. Write to EXACTLY this relative path:
 
-                  {{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html
+                  candidate-{{ $.workflow.input.candidate_id }}.html
 
                 candidate id: {{ $.workflow.input.candidate_id }}
 
@@ -118,12 +129,12 @@ workflows:
                 Serve the app's core needs (fit-for-purpose):
                   profile = {{ $.workflow.input.profile }}
 
-                If a content source path is given below, it holds the page's
-                REAL copy (headings, body, labels, CTAs, in order). READ it with
-                your file-read tool and lay out EXACTLY that copy — do not
-                invent, add, reorder, or drop content; the words are fixed, the
-                DESIGN is yours. If it is empty, use representative content for
-                the app type.
+                If a content source is named below, it is a file in your working
+                directory holding the page's REAL copy (headings, body, labels,
+                CTAs, in order). READ it with your file-read tool using its
+                RELATIVE path and lay out EXACTLY that copy — do not invent, add,
+                reorder, or drop content; the words are fixed, the DESIGN is
+                yours. If it is empty, use representative content for the app type.
                   content source: {{ $.workflow.input.content_path }}
 
                 Be distinctive — do NOT emit the generic default (Inter + dark
