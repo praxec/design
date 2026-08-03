@@ -64,16 +64,29 @@ confidence. The pipeline is **architected against its generators' priors.** Thro
 "distinctive" from an LLM opinion into a computed, calibrated measurement, with fail-fast on
 collapse.**
 
-1. **Genericness axis `G` (computed, not vibes)** — a **structural-signature distance**: a
-   candidate's design-*geometry* feature vector (grid symmetry, composition centering, corner
-   geometry, palette/type signals — parsed from the rendered page) vs the **generic-corpus
-   centroid**. High `G` = far from cookie-cutter. `G < τ` → **ineligible**. Never an LLM taste
-   opinion (which shares the disease).
-   **Empirically validated (Increment-I Task 1):** clean ~2.4× separation of distinctive vs generic
-   (generic G ≈ 0.56–0.91, distinctive G ≈ 2.18–2.31, τ=1.549, margin 1.27, zero overlap). Key
-   finding — **the signal is composition *geometry*, not fonts or anti-patterns**: a detect-clean
-   brutalist ranks *highest*, and `asymmetric_grid`/`not_centered`/`square_corners` each separate
-   the golden set single-handedly. (Thumbnail image-embedding G is a later enhancement, not needed.)
+1. **Genericness axis `G` (computed, not vibes) — hard floor in the CANDIDATE regime, advisory on
+   real sites.** A **structural-signature distance**: a candidate's design-*geometry* feature vector
+   (grid symmetry, composition centering, corner geometry, palette/type signals — parsed from the
+   rendered page) vs the **generic-corpus centroid**. High `G` = far from cookie-cutter. Never an LLM
+   taste opinion (which shares the disease).
+   **Two regimes, empirically established — this is the load-bearing honesty of the whole pack:**
+   - **Candidate regime** (the self-contained designs the pipeline GENERATES): `G` separates cleanly
+     — ~2.4× (golden set: generic G ≈ 0.56–0.91, distinctive 2.18–2.31, τ≈1.44, margin 1.05, zero
+     overlap). Here `G < τ` → **ineligible** is a real hard floor. `calibration.golden.json`.
+   - **Real-site regime** (live production pages — rollout surfaces, existing components): `G` does
+     **NOT** separate. On a curated real corpus (n=15 generic / 16 distinctive), even after adding
+     two failure-mode features (intentional-vs-incidental asymmetry + a minimal-polish axis), the
+     overlap only narrowed −0.51 → −0.278 and never crossed positive (rank AUC 0.94, but no valid
+     τ). The binding false-positive is a serif+saturated+gradient marketing page that apes
+     distinctiveness through coarse visual cues structure can't disambiguate. So on real sites `G` is
+     a **ranking prior, not a hard floor** — `calibration.corpus.json` is `SCORE_UNCALIBRATED` and
+     the scorer **refuses** rather than fabricate a verdict.
+   **Consequence (validated, not a fallback):** for real designs the **human prune is the genericness
+   fitness function** (§8b) — the visual taste structure can't encode is exactly what the human
+   supplies. The **thumbnail image-embedding `G`** is promoted from "later enhancement" to *the known
+   path to an automated real-site hard floor*, a deferred increment. Key structural finding still
+   holds in-regime: the signal is composition *geometry*, not fonts — a detect-clean brutalist ranks
+   highest.
 2. **Diversity as hard, verifiable constraints — not labels** — a seed ("brutalist / asymmetric /
    serif-display / mono+1") is a constraint set the generator must satisfy, **checked against the
    rendered CSS/DOM** (did the corners stay square, the grid asymmetric, the type serif?).
@@ -90,8 +103,11 @@ collapse.**
 6. **Human taste captured as evidence + learned** — each prune (chosen + rejected + `G`/axis
    context) → evidence → the flywheel builds a **per-operator taste profile** biasing future seeds.
 7. **Testable acceptance (TDD)** — a **golden fixture set** (distinctive vs generic) the `G`-metric
-   MUST rank correctly (unit test); every shippable candidate MUST clear **`G > τ` AND detect = 0
-   AND seed/DNA adherence.** Pack CI gates.
+   MUST rank correctly (unit test); every shippable **generated candidate** MUST clear **`G > τ` AND
+   detect = 0 AND seed/DNA adherence** (candidate regime). On **real sites** the `G > τ` hard floor
+   is replaced by the human prune (§8b) + detect + fit, since real-site `G` is advisory only. Pack CI
+   gates both the golden separation AND the honest real-corpus non-separation (`SCORE_UNCALIBRATED`),
+   so no future change can silently fudge the metric to force a green.
 
 ## 4. Fit-for-purpose — CORE REQUIREMENT #2
 
@@ -244,11 +260,49 @@ Loop (every mode):
 ```
 purpose → research → ELICIT aesthetic foundation → diverge(within foundation) → [recombine]
        → render → score(G + fit) → detect-gate
-       → PRUNE(human: keep/branch/compose/reject) → refine ↺ → audit → hero → code → done
+       → PRUNE-AND-STEER(human: verdict + likes/dislikes + rank) → refine ↺ → audit → hero → code → done
 ```
 Bounded (N/round), enforced (hard seeds + G floor + fit floor + app-appropriate seeds + the
 elicited aesthetic foundation), human-gated, capped by max-rounds + the cost gate. The aesthetic
 foundation is what makes the **first** spread all-good rather than a cold wide spread of discards.
+
+## 6b. Prune-and-steer — the human IS the fitness function
+
+Per §3, on real designs `G` is advisory, not a hard floor — so the **human prune is the genericness
+fitness function**, and it must be richer than keep/reject. Annealing needs a gradient; in a *design*
+pipeline the gradient is human taste. The prune therefore **elicits structured reactions per candidate
+and feeds the *reasons* back into the next divergence** — the human doesn't just cut, the human steers.
+
+No bespoke cockpit. Two pieces the pack already owns:
+- **Presentation = the browser.** The render step already writes each candidate to a standalone HTML
+  file. A deterministic `contact-sheet.mjs` (`kind: script`) composes them into ONE local
+  `contact-sheet.html` — a labelled grid (candidate id + G/fit/detect badges, each cell a thumbnail
+  linking its full render). Side-by-side compare is native (one page; or open cells in tabs).
+  Optionally a **headed browser** (browser MCP, reused from QA) walks the human through each render.
+  The sheet degrades gracefully to a file the human opens — `browser` is optional.
+- **Feedback = the elicitation MCP** already used for HITL park/resume.
+
+**`cap.gate.prune-and-steer`** (replaces the thin `cap.gate.human-disambiguate`). State machine
+`noop-initial → sheet-built (kind:script) → parked (elicitation) → resolved`, collecting per candidate:
+`{ candidate_id, verdict: keep|branch|compose|reject, rank, likes[], dislikes[], notes }`. Tags are a
+closed vocab over the design axes already in the feature space (`layout, type, color, space, motion,
+feel`) so likes/dislikes are machine-consumable. Fail-fasts: `NO_CANDIDATES_TO_PRUNE` (empty eligible
+spread — upstream failed, don't present nothing) and `PRUNE_UNRESOLVED` (resume missing a verdict for
+any presented candidate — no silent partial prune).
+
+**Closing the loop:** the prune output is the annealing gradient. `refine`/`diverge` consumes it —
+`keep`→survive, `branch`→variations, `compose`→the crossover/recombine path, `reject`→drop the
+lineage; and `likes/dislikes/rank` become **steering constraints appended to the next generation
+prompt** (alongside the aesthetic foundation): "amplify {liked axes of the top-ranked}, avoid
+{disliked}." The human's stated preferences are the fitness signal the next spread anneals toward —
+this is what makes it *annealing*, not one-shot generate-then-pick. Lineage (keep/branch/compose) IS
+the run tree.
+
+**Dry-run proof BEFORE any paid generation.** The human loop is the least-proven half, so prove it for
+**zero generation cost**: drive `flow.anneal` with **stub candidates** (or real corpus renders as
+stand-ins) → contact sheet → the human actually clicks through and reacts via elicitation → workflow
+parks + resumes → `refine` demonstrably consumes the steer. Only then does the first **credited Kimi**
+spread flow through an already-proven gate.
 
 ## 7. Tool dependencies (integration surfaces)
 
@@ -286,11 +340,20 @@ praxec/design
   increment isn't done. All fail-fasts wired (`PURPOSE_UNSET`, `DIVERGENCE_COLLAPSED`,
   `NO_FIT_FOR_PURPOSE`, `SCORE_UNCALIBRATED`, `CANDIDATE_NOT_RENDERABLE`). (No recombine/Impeccable-
   skill/Higgsfield/cockpit yet.)
+- **Increment I-b — prune-and-steer, the human fitness function (§6b).** Upgrade the prune from
+  keep/reject to `cap.gate.prune-and-steer`: `contact-sheet.mjs` presentation → per-candidate
+  `{verdict, rank, likes[], dislikes[], notes}` via elicitation MCP (parked) → the steer flows into
+  the next `diverge`. Fail-fasts `NO_CANDIDATES_TO_PRUNE` / `PRUNE_UNRESOLVED`. **Exit = a FREE
+  dry-run:** drive `flow.anneal` on stub/corpus stand-in candidates, a real human pass through the
+  gate, and `refine` demonstrably consuming the steer — proven before any paid generation. This is
+  now the load-bearing anti-genericness mechanism for real designs, not a UX nicety.
 - **Increment II — crossover, full toolchain, modes.** `cap.recombine.aspects` (mix-and-match) +
   the gate's compose action; `cap.audit.impeccable` (skill) + `cap.render.hero` + `cap.cluster`;
   `style-first` + `grid`; taste-profile learning to the flywheel; register 21st/Higgsfield.
-- **Increment III — the gallery cockpit.** Mission Control one-screen view (thumbnails + axis scores
-  incl. G/fit + lineage tree + pick/compose). Consumes pack state; no pack change.
+- **Increment III — the gallery cockpit (OPTIONAL polish).** The prune-and-steer contact sheet (I-b)
+  already presents thumbnails + G/fit badges + side-by-side, so a bespoke cockpit is **no longer
+  load-bearing** — it's an ergonomic upgrade (richer lineage-tree view, in-place compose) over a
+  proven gate, not a prerequisite. Consumes pack state; no pack change.
 - **Increment IV — rollout (§4b).** `flow.rollout`: capture the winner's design system → **gated
   commodity fan-out** across a target site's surfaces (reuse `cognitive/cap.implement.*` + PR-open),
   every surface held to `G>τ / detect=0 / fit≥floor` (anti-regression). `design`→frontier,
