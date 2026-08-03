@@ -87,8 +87,25 @@ workflows:
                       candidate_id: { type: string }
                       verdict:      { type: string, enum: [keep, branch, compose, reject] }
                       rank:         { type: integer }
-                      likes:        { type: array, items: { type: string } }
-                      dislikes:     { type: array, items: { type: string } }
+                      # Valenced: each like/dislike is { axis, toward } — direction,
+                      # not just axis. `toward` = the quality to amplify (like) or the
+                      # redirect target (dislike, "upscale, restrained — not orange").
+                      likes:
+                        type: array
+                        items:
+                          type: object
+                          required: [axis]
+                          properties:
+                            axis:   { type: string, enum: [layout, type, color, space, motion, feel] }
+                            toward: { type: string }
+                      dislikes:
+                        type: array
+                        items:
+                          type: object
+                          required: [axis]
+                          properties:
+                            axis:   { type: string, enum: [layout, type, color, space, motion, feel] }
+                            toward: { type: string }
                       notes:        { type: string }
             executor: { kind: human }
             output:

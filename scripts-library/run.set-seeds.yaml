@@ -14,10 +14,13 @@
 # diverge picker). Increment II widens the refine branch to survivor-derived
 # perturbations + crossover; the wire shape here is stable.
 #
-# LOOP CLOSURE (spec §6b) — the third arg carries the human's STEER: when the
-# prune-and-steer gate produces { amplify:[...], avoid:[...] } from the human's
-# per-candidate reactions, we FOLD it into each tightened seed's `notes` field so
-# the downstream generation prompt carries "amplify […], avoid […]". The seed is
+# LOOP CLOSURE (spec §6b) — the third arg carries the human's VALENCED STEER: when
+# the prune-and-steer gate produces { amplify:[{axis,toward}], avoid:[{axis,toward}] }
+# from the human's per-candidate reactions, we FOLD it into each tightened seed's
+# `notes` field as directional text so the downstream generation prompt carries
+# "amplify: color→upscale not orange, type; avoid: feel→premium" — the human's
+# actual redirect, not just the axis (axis-only "avoid color" is meaningless to a
+# generator; every design has a color). The seed is
 # the annealing state; the steer is the gradient the next divergence anneals
 # toward. HONEST BOUNDARY: the OFFLINE stub generator (run.generate-direction)
 # IGNORES seed semantics, so the offline drive proves the PLUMBING (the steer
@@ -29,7 +32,8 @@
 # Args (script arg renderer stringifies object/array values):
 #   $1 — seeds_in (JSON array; the operator's seed constraint-set objects)
 #   $2 — chosen   (JSON object; {} on round 1, else the survivor { id, seed, ... })
-#   $3 — steer    (JSON object; {} when absent, else { amplify:[...], avoid:[...] })
+#   $3 — steer    (JSON object; {} when absent, else valenced
+#                  { amplify:[{axis,toward}], avoid:[{axis,toward}] })
 #
 # Emits ONE JSON verdict on stdout, read at $.output.json.*; ALWAYS exits 0:
 #   { seeds: array (the seed set for the round about to diverge) }
@@ -53,13 +57,24 @@ scripts:
           : null;
       let seeds = survivorSeed ? [survivorSeed] : (Array.isArray(seedsIn) ? seedsIn : []);
 
-      // Fold the steer into each seed's `notes` so the next generation prompt
-      // carries "amplify […], avoid […]". No-op when steer is empty.
-      const asArr = (x) => (Array.isArray(x) ? x.filter((v) => v != null && v !== "") : []);
-      const amplify = asArr(steer.amplify);
-      const avoid = asArr(steer.avoid);
+      // Fold the VALENCED steer into each seed's `notes` so the next generation
+      // prompt carries direction, not just axis: "amplify: color→upscale not orange,
+      // type; avoid: feel→premium". Each steer item is { axis, toward }; render
+      // `axis→toward` when a redirect is present, else the bare axis. A bare-string
+      // item still parses (back-compat). No-op when steer is empty.
+      const norm = (x) => {
+        if (x == null) return null;
+        if (typeof x === "string") { const a = x.trim(); return a ? { axis: a, toward: "" } : null; }
+        if (typeof x === "object" && x.axis != null && x.axis !== "")
+          return { axis: String(x.axis), toward: x.toward == null ? "" : String(x.toward) };
+        return null;
+      };
+      const items = (x) => (Array.isArray(x) ? x.map(norm).filter(Boolean) : []);
+      const render = (arr) => arr.map((n) => (n.toward ? `${n.axis}→${n.toward}` : n.axis));
+      const amplify = items(steer.amplify);
+      const avoid = items(steer.avoid);
       if (amplify.length || avoid.length) {
-        const note = `amplify: ${amplify.join(", ")}; avoid: ${avoid.join(", ")}`;
+        const note = `amplify: ${render(amplify).join(", ")}; avoid: ${render(avoid).join(", ")}`;
         seeds = seeds.map((s) => {
           const seed = s && typeof s === "object" ? { ...s } : { value: s };
           seed.notes = [seed.notes, note].filter(Boolean).join(" | ");

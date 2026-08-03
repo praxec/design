@@ -112,11 +112,14 @@ print("ELIG_IDS=%r" % " ".join(x.get("id","") for x in elig))
 [ "$GATE_DEF" = "design/cap.gate.prune-and-steer" ]  || fail "expected prune-and-steer gate, got $GATE_DEF"
 echo "   parked at prune-and-steer; eligible_count=$ELIG; presenting [$ELIG_IDS]; child=$CHILD_ID"
 
-# Resume: submit STRUCTURED per-candidate feedback (verdict / rank / likes /
-# dislikes — one entry per PRESENTED candidate, no silent partial prune) plus the
-# survivor keep_id, as a human principal. Survivor liked `type`, disliked `color`;
-# the rejected sibling disliked `space` — so the aggregated steer is deterministic:
-# amplify=[type] (survivor + top-ranked likes), avoid=[color, space] (all dislikes).
+# Resume: submit VALENCED STRUCTURED per-candidate feedback (verdict / rank /
+# likes / dislikes — each like/dislike is { axis, toward }, one entry per PRESENTED
+# candidate, no silent partial prune) plus the survivor keep_id, as a human
+# principal. Survivor liked type→"geometric sans", disliked color→"restrained
+# palette"; the rejected sibling disliked space→"tighter density" — so the
+# aggregated steer is deterministic AND directional:
+#   amplify=[{type,"geometric sans"}]  (likes of the carried-forward survivor)
+#   avoid=[{color,"restrained palette"},{space,"tighter density"}]  (all dislikes)
 RESUME=$(python3 -c '
 import json,sys
 ids=sys.argv[4].split(); keep=sys.argv[3]
@@ -125,8 +128,9 @@ for i,cid in enumerate(ids):
     fb.append({"candidate_id":cid,
       "verdict":("keep" if cid==keep else "reject"),
       "rank":i+1,
-      "likes":(["type"] if cid==keep else []),
-      "dislikes":(["color"] if cid==keep else ["space"]),
+      "likes":([{"axis":"type","toward":"geometric sans"}] if cid==keep else []),
+      "dislikes":([{"axis":"color","toward":"restrained palette"}] if cid==keep
+                  else [{"axis":"space","toward":"tighter density"}]),
       "notes":"smoke: taste reaction"})
 print(json.dumps({"workflowId":sys.argv[1],"expectedVersion":int(sys.argv[2]),
   "transition":"resolve","arguments":{"keep_id":keep,"feedback":fb}}))' \
@@ -147,8 +151,8 @@ c2elig=c.get("eligible",[])
 print("R2STATE=%r" % w.get("state"))
 print("R2ROUND=%r" % c.get("round"))
 print("R2NOTES=%r" % ((rs[0] or {}).get("notes","")))
-print("R2AMP=%r"   % ",".join(steer.get("amplify",[])))
-print("R2AVOID=%r" % ",".join(steer.get("avoid",[])))
+print("R2AMP=%r"   % ",".join(a.get("axis","") for a in steer.get("amplify",[])))
+print("R2AVOID=%r" % ",".join(a.get("axis","") for a in steer.get("avoid",[])))
 print("C2_ID=%r"   % args.get("workflowId"))
 print("C2_VER=%r"  % args.get("expectedVersion"))
 print("C2_KEEP=%r" % (c2elig[0]["id"] if c2elig else ""))
@@ -156,11 +160,12 @@ print("C2_IDS=%r"  % " ".join(x.get("id","") for x in c2elig))
 ')"
 [ "$R2STATE" = "pruning" ]        || fail "expected re-park at pruning (round 1), got $R2STATE"
 [ "$R2ROUND" -eq 1 ] 2>/dev/null  || fail "expected refined round=1, got $R2ROUND"
-[ "$R2AMP" = "type" ]             || fail "expected steer.amplify=[type], got [$R2AMP]"
-[ "$R2AVOID" = "color,space" ]    || fail "expected steer.avoid=[color,space], got [$R2AVOID]"
-case "$R2NOTES" in *"amplify: type"*) : ;; *) fail "steer amplify not folded into round_seeds notes: '$R2NOTES'";; esac
-case "$R2NOTES" in *"avoid: color"*)  : ;; *) fail "steer avoid not folded into round_seeds notes: '$R2NOTES'";; esac
-echo "   loop closed: round=1 seeds carry the steer → notes='$R2NOTES'  ✓"
+[ "$R2AMP" = "type" ]             || fail "expected steer.amplify axes=[type], got [$R2AMP]"
+[ "$R2AVOID" = "color,space" ]    || fail "expected steer.avoid axes=[color,space], got [$R2AVOID]"
+# Valenced fold: the DIRECTION (toward), not just the axis, must reach the seed notes.
+case "$R2NOTES" in *"amplify: type→geometric sans"*) : ;; *) fail "valenced amplify not folded into round_seeds notes: '$R2NOTES'";; esac
+case "$R2NOTES" in *"avoid: color→restrained palette"*) : ;; *) fail "valenced avoid not folded into round_seeds notes: '$R2NOTES'";; esac
+echo "   loop closed: round=1 seeds carry the VALENCED steer → notes='$R2NOTES'  ✓"
 
 # Resume the round-1 gate → the parent reaches `done` / succeeded with a survivor.
 RESUME2=$(python3 -c '

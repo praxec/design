@@ -14,11 +14,17 @@
 #                      { candidate_id, verdict: keep|branch|compose|reject, rank,
 #                        likes[], dislikes[], notes }
 #
-# Emits { steer: { amplify: [...], avoid: [...] } } on stdout (→ $.output.json.steer):
-#   amplify = liked axes of the survivor(s) (verdict==keep) + the top-ranked entry
-#   avoid   = every disliked axis across the spread (deduped)
-# The tags are a closed vocab over the design feature axes (layout/type/color/
-# space/motion/feel), so amplify/avoid are machine-consumable by the next prompt.
+# Emits { steer: { amplify: [{axis,toward}], avoid: [{axis,toward}] } } on stdout
+# (→ $.output.json.steer). The steer is VALENCED — direction, not just axis:
+#   amplify = likes of ALL carried-forward directions (verdict != "reject":
+#             keep + branch + compose), deduped by axis, distinct `toward`
+#             phrases merged with "; " (a composed direction's preferences survive).
+#   avoid   = dislikes across the WHOLE spread, deduped by axis; `toward` = the
+#             REDIRECT target ("upscale, restrained — not orange"), "" if none.
+# Each like/dislike is a valenced { axis, toward? } over the closed feature-axis
+# vocab (layout/type/color/space/motion/feel); a bare string "color" still parses
+# (→ {axis:"color", toward:""}) for back-compat. So the steer is machine-consumable
+# AND carries the human's actual intent (the redirect), not just the axis.
 #
 # Fail-fast (spec §6b):
 #   exit 3 PRUNE_UNRESOLVED — a presented candidate id has NO feedback entry on
@@ -46,26 +52,45 @@ scripts:
         process.exit(3);
       }
 
-      const uniq = (xs) => Array.from(new Set(xs.filter((x) => x != null && x !== "")));
       const asArr = (x) => (Array.isArray(x) ? x : x == null || x === "" ? [] : [x]);
 
-      // (b) Aggregate the steer. amplify = likes of the survivor(s) + the top-ranked
-      // (lowest rank number) entry; avoid = every disliked axis across the spread.
-      const ranked = feedback
-        .filter((f) => f && typeof f.rank === "number")
-        .sort((a, b) => a.rank - b.rank);
-      const topRankId = ranked.length ? ranked[0].candidate_id : null;
+      // Normalizer: a like/dislike is a valenced { axis, toward }. Back-compat: a
+      // bare string "color" still parses → { axis:"color", toward:"" } (no hard-fail).
+      const norm = (x) => {
+        if (x == null) return null;
+        if (typeof x === "string") { const a = x.trim(); return a ? { axis: a, toward: "" } : null; }
+        if (typeof x === "object" && x.axis != null && x.axis !== "")
+          return { axis: String(x.axis), toward: x.toward == null ? "" : String(x.toward) };
+        return null;
+      };
 
-      const amplify = [];
-      const avoid = [];
+      // Dedupe valenced items by axis, PRESERVING first-seen order and MERGING
+      // distinct non-empty `toward` phrases with "; " (direction is never dropped).
+      const dedupeByAxis = (raw) => {
+        const order = [];
+        const towards = new Map();
+        for (const it of raw) {
+          const n = norm(it);
+          if (!n) continue;
+          if (!towards.has(n.axis)) { towards.set(n.axis, []); order.push(n.axis); }
+          const arr = towards.get(n.axis);
+          if (n.toward && !arr.includes(n.toward)) arr.push(n.toward);
+        }
+        return order.map((axis) => ({ axis, toward: towards.get(axis).join("; ") }));
+      };
+
+      // (b) Aggregate the valenced steer.
+      //   amplify = likes of ALL carried-forward directions (verdict != "reject":
+      //             keep + branch + compose) — a composed direction's likes survive.
+      //   avoid   = dislikes across the WHOLE spread (the redirect targets).
+      const amplifyRaw = [];
+      const avoidRaw = [];
       for (const f of feedback) {
         if (!f) continue;
-        avoid.push(...asArr(f.dislikes));
-        const isKeep = f.verdict === "keep";
-        const isTop = f.candidate_id === topRankId;
-        if (isKeep || isTop) amplify.push(...asArr(f.likes));
+        avoidRaw.push(...asArr(f.dislikes));
+        if (f.verdict !== "reject") amplifyRaw.push(...asArr(f.likes));
       }
 
       console.log(JSON.stringify({
-        steer: { amplify: uniq(amplify), avoid: uniq(avoid) },
+        steer: { amplify: dedupeByAxis(amplifyRaw), avoid: dedupeByAxis(avoidRaw) },
       }));
