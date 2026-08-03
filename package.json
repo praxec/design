@@ -1,0 +1,10 @@
+{
+  "name": "praxec-design",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "praxec/design pack — UI-design annealing measurement core",
+  "scripts": {
+    "test": "node --test \"scripts-library/*.test.mjs\""
+  }
+}

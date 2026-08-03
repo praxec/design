@@ -1,0 +1,13 @@
+{
+  "description": "Golden calibration set for the structural-signature metric. label = ground truth (generic = the LLM/SaaS cookie-cutter default; distinctive = editorial/brutalist/swiss/unconventional). The G metric MUST rank every distinctive fixture above every generic fixture.",
+  "fixtures": [
+    { "file": "generic-01-saas-dark.html",           "label": "generic",     "note": "Inter, dark gradient, rounded cards, indigo accent, centered symmetric 3-col grid" },
+    { "file": "generic-02-saas-light.html",          "label": "generic",     "note": "system-ui sans, light gray, rounded cards, blue accent, centered symmetric grid" },
+    { "file": "generic-03-startup-gray.html",        "label": "generic",     "note": "Roboto, gray, pill buttons, teal accent, centered symmetric grid" },
+    { "file": "generic-04-ai-app.html",              "label": "generic",     "note": "Inter/Jakarta, radial dark gradient, gradient text + buttons, rounded glass cards, symmetric grid" },
+    { "file": "distinctive-01-editorial-serif.html", "label": "distinctive", "note": "Georgia/Playfair serif display, white/black, square, asymmetric 2.4:1 grid, hard rules, red accent" },
+    { "file": "distinctive-02-brutalist.html",       "label": "distinctive", "note": "Helvetica (sans!) but brutalist: acid-yellow, 6px black rules, square, asymmetric 1:3 grid, 104px type" },
+    { "file": "distinctive-03-swiss-mono.html",      "label": "distinctive", "note": "IBM Plex Mono, forest green, orange accent, hairline rules, square, asymmetric 3:5 grid" },
+    { "file": "distinctive-04-maximal.html",         "label": "distinctive", "note": "italic Baskerville serif, electric violet maximal palette, 3px pink frames, square, asymmetric 5:2 grid" }
+  ]
+}

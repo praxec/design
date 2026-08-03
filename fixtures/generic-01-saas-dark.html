@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nimbus — Ship faster</title>
+<style>
+  :root { --accent:#6366f1; }
+  * { box-sizing:border-box; }
+  body {
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    background: linear-gradient(180deg,#0b0b0f 0%,#15151f 100%);
+    color:#e5e7eb; margin:0;
+  }
+  .wrap { max-width:1120px; margin:0 auto; padding:96px 24px; text-align:center; }
+  h1 { font-size:44px; font-weight:700; letter-spacing:-0.02em; margin:0 0 16px; }
+  p.sub { font-size:18px; color:#9ca3af; margin:0 0 32px; }
+  .btn {
+    background:var(--accent); color:#fff; border:none; border-radius:10px;
+    padding:14px 28px; font-size:16px; font-weight:600;
+  }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-top:64px; }
+  .card {
+    background:#18181b; border:1px solid #27272a; border-radius:14px;
+    padding:32px; box-shadow:0 8px 30px rgba(0,0,0,.35); text-align:left;
+  }
+  .card h3 { margin:0 0 8px; font-size:18px; }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Ship faster with Nimbus</h1>
+    <p class="sub">The modern platform for building modern products.</p>
+    <button class="btn">Get started free</button>
+    <section class="grid">
+      <div class="card"><h3>Fast</h3><p>Blazing performance out of the box.</p></div>
+      <div class="card"><h3>Secure</h3><p>Enterprise-grade security built in.</p></div>
+      <div class="card"><h3>Scalable</h3><p>Grows with your team effortlessly.</p></div>
+    </section>
+  </main>
+</body>
+</html>

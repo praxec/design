@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GRID SYSTEM</title>
+<style>
+  * { box-sizing:border-box; }
+  body {
+    font-family: "IBM Plex Mono", "Courier New", monospace;
+    background:#0f1e14; color:#e8ffe8; margin:0;
+  }
+  .rule { border-bottom:1px solid #3a5a44; }
+  .head { padding:24px 40px; display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:0; }
+  .head div { border-left:1px solid #3a5a44; padding-left:12px; font-size:12px; letter-spacing:0.2em; }
+  .head div:first-child { border-left:none; }
+  .display { padding:64px 40px; }
+  .display h1 { font-size:64px; font-weight:400; letter-spacing:-0.02em; margin:0; line-height:1; }
+  .display .num { color:#ff5c00; }
+  .body { display:grid; grid-template-columns:3fr 5fr; }
+  .body .meta { padding:32px 40px; border-right:1px solid #3a5a44; font-size:13px; line-height:1.9; }
+  .body .text { padding:32px 40px; font-size:15px; line-height:1.7; }
+</style>
+</head>
+<body>
+  <div class="head rule">
+    <div>SYSTEM</div><div>0.1</div><div>MONO</div><div>2026</div>
+  </div>
+  <section class="display rule">
+    <h1>GRID<span class="num">/</span>SYSTEM</h1>
+  </section>
+  <div class="body">
+    <div class="meta rule">
+      TYPEFACE — PLEX MONO<br>
+      COLUMNS — 3:5 ASYM<br>
+      RADIUS — 0PX<br>
+      ACCENT — #FF5C00
+    </div>
+    <div class="text rule">
+      A Swiss/international grid rendered in monospace on a deep forest field with a
+      single molten-orange accent. Hairline rules, not shadows. Asymmetric three-to-five
+      split. Nothing rounded, nothing centered, nothing that reads as the default app.
+    </div>
+  </div>
+</body>
+</html>

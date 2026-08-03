@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cortex AI — Your intelligent assistant</title>
+<style>
+  :root { --accent:#8b5cf6; }
+  * { box-sizing:border-box; }
+  body {
+    font-family: Inter, "Plus Jakarta Sans", system-ui, sans-serif;
+    background: radial-gradient(circle at 50% 0%,#1a1030 0%,#0a0a12 60%);
+    color:#e2e2ef; margin:0;
+  }
+  .wrap { max-width:1024px; margin:0 auto; padding:104px 24px; text-align:center; }
+  h1 { font-size:46px; font-weight:800; letter-spacing:-0.03em; margin:0 0 16px;
+       background:linear-gradient(90deg,#a78bfa,#22d3ee); -webkit-background-clip:text; color:transparent; }
+  p.sub { font-size:18px; color:#a1a1b5; margin:0 0 32px; }
+  .btn {
+    background:linear-gradient(90deg,var(--accent),#6366f1); color:#fff; border:none;
+    border-radius:12px; padding:14px 30px; font-size:16px; font-weight:600;
+  }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-top:60px; }
+  .card {
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+    border-radius:16px; padding:30px; backdrop-filter:blur(8px);
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Your intelligent assistant</h1>
+    <p class="sub">Cortex understands your work and gets it done.</p>
+    <button class="btn">Chat with Cortex</button>
+    <section class="grid">
+      <div class="card"><h3>Smart</h3><p>Context-aware answers.</p></div>
+      <div class="card"><h3>Fast</h3><p>Instant responses.</p></div>
+      <div class="card"><h3>Private</h3><p>Your data stays yours.</p></div>
+    </section>
+  </main>
+</body>
+</html>
