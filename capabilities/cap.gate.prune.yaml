@@ -1,0 +1,64 @@
+# capabilities/cap.gate.prune.yaml
+#
+# THE HUMAN PRUNE (spec §2 / §6 "one-screen prune") — the taste authority of the
+# annealing loop. A design-local mirror of cognitive/cap.gate.human-disambiguate
+# (same actor:human + presents + choices{field,from,value,title} + pick-output
+# shape), specialised to the prune: it presents ONLY the ELIGIBLE candidates
+# (the flow guarantees every one has already cleared detect==0 AND fit>=floor AND
+# G>tau — spec §3/§4) together with their G / fit / thumbnail context, and the
+# human keeps ONE survivor to refine. Decision (chosen + rationale) is recorded
+# as evidence via the audit sink.
+#
+# It is a SUB-CAP (not an inline human transition) on purpose: the survivor must
+# feed the refine step's `use.inputs`, and V13 only recognises a slot fed from a
+# child's `use.outputs` — the same reason cognitive/flow.pressure-test routes its
+# human gate through cap.gate.human-signoff. The parent parks while this child
+# awaits the human; resume by submitting `pick` (chosen_id) as a human principal.
+#
+# V-grounding: verb `gate` (blessed); the human leaf is `executor: {kind: human}`.
+workflows:
+  cap.gate.prune:
+    verb: gate
+    lifecycle: experimental
+    description: >
+      Human prune of the eligible candidate set: present only candidates that
+      cleared every eligibility floor (detect/ fit / G) with their G, fit, and
+      thumbnail, and keep ONE survivor to refine. The taste authority — no
+      auto-select on an LLM opinion (spec §3.4). Decision recorded as evidence.
+    snippet:
+      inputs:
+        # The eligible candidate records (each { id, name, G, fit, thumbnail }).
+        candidates: { type: array,  required: true }
+        prompt:     { type: string, default: "Keep one direction to refine" }
+      outputs:
+        chosen:    { type: object }
+        rationale: { type: string }
+    initialState: awaiting_human
+    states:
+      awaiting_human:
+        goal: Block; surface the eligible candidates + their G/fit/thumbnail to the operator.
+        transitions:
+          pick:
+            target: done
+            actor: human
+            presents: ["$.context.candidates"]
+            choices:
+              field: chosen_id
+              from: "$.context.candidates"
+              value: "id"
+              title: "name"
+            inputSchema:
+              type: object
+              required: [chosen_id]
+              properties:
+                chosen_id: { type: string }
+                rationale: { type: string, default: "" }
+            executor: { kind: human }
+            output:
+              chosen:
+                pick:
+                  from: "$.context.candidates"
+                  by: "id"
+                  eq: "$.arguments.chosen_id"
+              rationale: "$.arguments.rationale"
+      done: { terminal: true }

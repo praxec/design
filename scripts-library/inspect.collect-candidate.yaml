@@ -1,0 +1,92 @@
+# scripts-library/inspect.collect-candidate.yaml
+#
+# The ELIGIBILITY FLOOR + LEDGER-KEEPER for flow.anneal.structure-first
+# (spec §3 + §4). A candidate reaches the human prune ONLY if it clears ALL
+# THREE co-equal floors — the hard gate before the human ever sees it:
+#
+#   eligible = (antipattern_count == 0)   # §3.5 usability floor (impeccable detect)
+#          AND (fit.score >= fit_floor)    # §4    fit-for-purpose floor
+#          AND (G > tau)                    # §3    distinctiveness floor
+#
+# The floors `tau` and `fit_floor` are PASSED IN (threaded from the flow's
+# inputs/config) — never hard-coded here or in the orchestrator (spec §6:
+# "Reference the eligibility thresholds from config/input, not magic numbers").
+#
+# WHY A CO-LOCATED CAP (V13 / array-append): the transition-output language has
+# no array-append op, so the accumulation of the `eligible` set (and the full
+# `scored` ledger) lives HERE, in code — and being a snippet-typed cap makes
+# `eligible` a first-class slot the human prune can present + the diverge gate
+# can branch on via the scalar `eligible_count` (guard-expr can't test array
+# emptiness). "Never present a collapsed set": eligible_count == 0 at exhaustion
+# routes the flow to DIVERGENCE_COLLAPSED, not to the human.
+#
+# Args (script arg renderer stringifies object/array values):
+#   $1 — tau (number; the G distinctiveness floor, from flow input/config)
+#   $2 — fit_floor (number; the fit-for-purpose floor, from flow input/config)
+#   $3 — G (number; from cap.inspect.score-axes)
+#   $4 — fit (JSON object; from cap.inspect.score-axes, carries .score)
+#   $5 — antipattern_count (int; from cap.verify.detect-antipatterns)
+#   $6 — candidate (JSON object; { id, artifact, seed, ... } from generate)
+#   $7 — thumbnail (JSON object; from cap.run.render-thumbnail)
+#   $8 — eligible_in (JSON array; the eligible ledger so far)
+#   $9 — scored_in (JSON array; the full scored ledger so far)
+#
+# Emits ONE JSON verdict on stdout, read at $.output.json.*; ALWAYS exits 0:
+#   { eligible: array (records the human prune presents; each { id, name, ... }),
+#     scored: array (every scored candidate incl. rejected, with why),
+#     eligible_count: int (len(eligible) — the diverge gate's scalar),
+#     eligible_this: bool (did THIS candidate clear all three floors?) }
+version: "1.0.0"
+scripts:
+  inspect.collect-candidate:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic eligibility floor + eligible/scored ledger accumulation.
+      function j(v, d) { try { const x = JSON.parse(v); return x === undefined ? d : x; } catch { return d; } }
+      const tau = parseFloat(process.argv[2]);
+      const fitFloor = parseFloat(process.argv[3]);
+      const G = parseFloat(process.argv[4]);
+      const fit = j(process.argv[5], null);
+      const antipatternCount = parseInt(process.argv[6] || "0", 10);
+      const candidate = j(process.argv[7], {}) || {};
+      const thumbnail = j(process.argv[8], {}) || {};
+      const eligibleIn = j(process.argv[9], []) || [];
+      const scoredIn = j(process.argv[10], []) || [];
+
+      const fitScore = fit && typeof fit.score === "number" ? fit.score : null;
+      const usable = antipatternCount === 0;
+      // fit_floor unmet (or unassessable) => NOT eligible — an honest floor,
+      // never a fabricated pass (spec §4.5 NO_FIT_FOR_PURPOSE symmetry).
+      const fitOk = fitScore !== null && fitScore >= fitFloor;
+      const distinctive = Number.isFinite(G) && G > tau;
+      const eligible = usable && fitOk && distinctive;
+
+      const gStr = Number.isFinite(G) ? G.toFixed(2) : "n/a";
+      const fitStr = fitScore === null ? "n/a" : String(fitScore);
+      const record = {
+        id: candidate.id || "",
+        // `name` is the human-prune display title (choices.title binds to it).
+        name: `${candidate.id || "candidate"} · G=${gStr} · fit=${fitStr} · usable=${usable}`,
+        G: Number.isFinite(G) ? G : null,
+        fit,
+        thumbnail,
+        artifact: candidate.artifact || "",
+        seed: candidate.seed || {},
+        antipattern_count: antipatternCount,
+      };
+
+      const scored = scoredIn.concat([Object.assign({}, record, {
+        eligible,
+        why: { usable, fit_ok: fitOk, distinctive, tau, fit_floor: fitFloor },
+      })]);
+      const eligibleOut = eligible ? eligibleIn.concat([record]) : eligibleIn;
+
+      console.log(JSON.stringify({
+        eligible: eligibleOut,
+        scored,
+        eligible_count: eligibleOut.length,
+        eligible_this: eligible,
+      }));

@@ -1,0 +1,40 @@
+# scripts-library/run.set-seeds.yaml
+#
+# The SEED-SET OWNER for flow.anneal.structure-first — the single writer of the
+# mutable `seeds` slot, used at BOTH ends of the annealing loop:
+#
+#   round 1 (seeding):  chosen == {}  →  echo the operator's input seed set.
+#   refine  (tighten):  chosen has a seed  →  CONVERGE on the survivor:
+#                        tightened `seeds = [ chosen.seed ]` (spec §1 "progressively
+#                        reduce entropy" / §6 "refine ↺ over the survivor").
+#
+# ONE cap owns the slot so `$.context.seeds` has a `use.outputs` writer (V13:
+# only slots written by `inputs:` or a child's `use.outputs` may feed a later
+# `use.inputs` — a noop `output:` seed would NOT make `seeds` re-usable by the
+# diverge picker). Increment II widens the refine branch to survivor-derived
+# perturbations + crossover; the wire shape here is stable.
+#
+# Args (script arg renderer stringifies object/array values):
+#   $1 — seeds_in (JSON array; the operator's seed constraint-set objects)
+#   $2 — chosen   (JSON object; {} on round 1, else the survivor { id, seed, ... })
+#
+# Emits ONE JSON verdict on stdout, read at $.output.json.*; ALWAYS exits 0:
+#   { seeds: array (the seed set for the round about to diverge) }
+version: "1.0.0"
+scripts:
+  run.set-seeds:
+    verb: run
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic seed-set owner: echo (round 1) or converge (refine).
+      function j(v, d) { try { const x = JSON.parse(v); return x === undefined ? d : x; } catch { return d; } }
+      const seedsIn = j(process.argv[2], []) || [];
+      const chosen = j(process.argv[3], {}) || {};
+      const survivorSeed =
+        chosen && typeof chosen.seed === "object" && chosen.seed !== null
+          ? chosen.seed
+          : null;
+      const seeds = survivorSeed ? [survivorSeed] : (Array.isArray(seedsIn) ? seedsIn : []);
+      console.log(JSON.stringify({ seeds }));

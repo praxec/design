@@ -1,0 +1,66 @@
+# scripts-library/inspect.next-seed.yaml
+#
+# The FAN-OUT CURSOR for flow.anneal.structure-first (spec §6 divergence loop).
+# Iterating the round's seed set and generating one candidate sub-instance per
+# seed is a code job, not an LLM judgment ("deterministic tools over LLM math").
+# Given the seed array + a monotone cursor + the per-round cap N, emit the next
+# seed to diverge on — or a terminal `exhausted` phase when the cursor has
+# reached min(len(seeds), N).
+#
+# WHY A CO-LOCATED CAP (not an inline script): a flow's slot table (V13) only
+# recognizes slots written by `inputs:` or a child workflow's `use.outputs` —
+# NOT by a transition `output:` block — so an inline pick could not feed
+# `current_seed` / `candidate_id` into the generate step's `use.inputs`. Wrapping
+# this pick in a snippet-typed cap (cap.inspect.next-seed) makes them first-class
+# slots (the same constraint that produced cognitive's cap.inspect.next-finding).
+#
+# The cursor is advanced HERE and bound at PICK time (like cap.inspect.next-
+# finding), so it is monotone and no downstream arm can rewind it — the fan-out
+# is bounded by min(len(seeds), N) and can never loop unbounded.
+#
+# Args (script arg renderer stringifies object/array values):
+#   $1 — seeds array (JSON; array of seed constraint-set OBJECTS)
+#   $2 — seed_idx (int; the monotone cursor)
+#   $3 — n (int; the per-round candidate cap)
+#
+# Emits ONE JSON verdict on stdout, read at $.output.json.*; ALWAYS exits 0
+# (the verdict lives in `phase`, never the exit code):
+#   { phase: "picked" | "exhausted" | "invalid",
+#     current_seed: string (JSON of seeds[idx]; "{}" unless picked),
+#     candidate_id: string (stable per candidate; "" unless picked),
+#     next_idx: int (idx+1 when picked; idx otherwise; -1 on invalid) }
+version: "1.0.0"
+scripts:
+  inspect.next-seed:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic fan-out cursor over the round's seed set.
+      function j(v) { try { return JSON.parse(v); } catch { return undefined; } }
+      const seeds = j(process.argv[2] || "[]");
+      const idx = parseInt(process.argv[3] || "0", 10);
+      const n = parseInt(process.argv[4] || "0", 10);
+
+      if (!Array.isArray(seeds) || Number.isNaN(idx) || Number.isNaN(n)) {
+        console.log(JSON.stringify({
+          phase: "invalid", current_seed: "{}", candidate_id: "", next_idx: -1,
+        }));
+        process.exit(0);
+      }
+      const limit = Math.min(seeds.length, n < 0 ? 0 : n);
+      if (idx < limit) {
+        console.log(JSON.stringify({
+          phase: "picked",
+          current_seed: JSON.stringify(seeds[idx]),
+          // Stable, collision-free candidate id (offline-deterministic prefix
+          // + wall clock so re-runs never overwrite a prior round's artifact).
+          candidate_id: `c-${idx}-${Date.now()}`,
+          next_idx: idx + 1,
+        }));
+      } else {
+        console.log(JSON.stringify({
+          phase: "exhausted", current_seed: "{}", candidate_id: "", next_idx: idx,
+        }));
+      }

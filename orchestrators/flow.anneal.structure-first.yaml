@@ -1,0 +1,545 @@
+# orchestrators/flow.anneal.structure-first.yaml
+#
+# THE INCREMENT-I ANNEALING SPINE (spec §6, DEFAULT mode). A governed,
+# measurement-gated evolutionary search: diverge many candidate directions,
+# score each on independent axes, and let ONLY the candidates that clear all
+# three eligibility floors reach a human prune — then refine over the survivor
+# with a tightened seed set. Distinctiveness (§3) and fit-for-purpose (§4) are
+# co-equal HARD FLOORS enforced BEFORE the human ever sees a candidate; a round
+# that collapses (zero eligible) fails fast rather than presenting junk.
+#
+# LOOP (spec §6):
+#   diverging → rendering → scoring → gating → collecting ↺  (fan-out over seeds)
+#     → pruning (HUMAN) → refining → (bump) → diverging ↺   (bounded by max_rounds)
+#     → done
+#
+# GROUNDING (reuses the cognitive fan-out + HITL patterns, no divergent shapes):
+#   - FAN-OUT as a bounded cursor loop over the seed set — one `kind: workflow`
+#     sub-instance per candidate (generate/render/score/detect), so the run tree
+#     records the whole exploration (spec §2 "branching + lineage are free").
+#     Pattern: cognitive/flow.qa.program's per-item loop; the cursor is a
+#     co-located snippet-typed cap (cap.inspect.next-seed) advanced at pick time.
+#   - ELIGIBILITY + array accumulation in code (cap.inspect.collect-candidate) —
+#     the transition-output language has no array-append (same reason cognitive's
+#     inspect.findings.next keeps its ledger in code); the diverge gate branches
+#     on the scalar `eligible_count` (guard-expr can't test array emptiness).
+#   - HUMAN PRUNE as a sub-cap (design/cap.gate.prune, mirroring cognitive/
+#     cap.gate.human-disambiguate) so the survivor feeds refine's `use.inputs`
+#     (V13) — the same reason flow.pressure-test routes its gate through
+#     cap.gate.human-signoff. The parent parks while the child awaits the human.
+#   - ROUND BUMP on a DEDICATED noop-executor state (`bumping`) — an `output:`
+#     mutation on a bare guard transition is NOT applied (flow.pressure-test's
+#     V2 fix); the counter would silently stay 0 and loop unbounded.
+#
+# FAIL-FAST (never paper over):
+#   - PURPOSE_UNSET        — no app_type ⇒ refuse to generate (spec §4.5).
+#   - DIVERGENCE_COLLAPSED — a round yields ZERO eligible candidates (all G<τ or
+#     all failing a floor) ⇒ FAIL, do NOT present a collapsed/empty set (spec §9).
+#     Bounded above by max_rounds; the collapse itself is the floor doing its job.
+#   - CANDIDATE_NOT_RENDERABLE — inherited from cap.run.render-thumbnail's own
+#     fail-fast (a missing/unparseable artifact fails the render child → the
+#     chain fails and the flow parks at `rendering`); not re-implemented here.
+#
+# THRESHOLDS (spec §6: "from config/input, not magic numbers"): τ (`tau`) and the
+# fit floor (`fit_floor`) are INPUTS threaded into cap.inspect.collect-candidate;
+# no eligibility constant is hard-coded in this flow.
+#
+# Requires (design/*): cap.run.set-seeds, cap.run.generate-direction,
+# cap.run.render-thumbnail, cap.inspect.score-axes, cap.verify.detect-antipatterns,
+# cap.inspect.next-seed + cap.inspect.collect-candidate (co-located below),
+# cap.gate.prune; and the scripts-library bodies they wrap. `scripts_dir`
+# (abs path to this pack's scripts-library/, holding score.mjs) is an input.
+
+workflows:
+
+  # ---------------------------------------------------------------------
+  # The fan-out CURSOR: pick seeds[seed_idx] (bounded by N) or report
+  # exhausted, advancing the monotone cursor at pick time. Snippet-typed so
+  # current_seed / candidate_id / next_idx are first-class slots (V13).
+  # ---------------------------------------------------------------------
+  cap.inspect.next-seed:
+    verb: inspect
+    lifecycle: experimental
+    description: >
+      Deterministically pick the next seed to diverge on from the round's seed
+      set (bounded by the per-round cap N), advancing the monotone cursor — or
+      report `exhausted`. The fan-out driver of the annealing spine.
+    snippet:
+      inputs:
+        seeds:    { type: array,   required: true }
+        seed_idx: { type: integer, required: true }
+        n:        { type: integer, required: true }
+      outputs:
+        phase:        { type: string }
+        current_seed: { type: string }
+        candidate_id: { type: string }
+        next_idx:     { type: integer }
+    initialState: picking
+    states:
+      picking:
+        goal: Pick the next seed (or exhaust), advance the cursor.
+        transitions:
+          pick:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.next-seed
+              args:
+                - "$.workflow.input.seeds"
+                - "$.workflow.input.seed_idx"
+                - "$.workflow.input.n"
+            output:
+              phase:        "$.output.json.phase"
+              current_seed: "$.output.json.current_seed"
+              candidate_id: "$.output.json.candidate_id"
+              next_idx:     "$.output.json.next_idx"
+      done: { terminal: true }
+
+  # ---------------------------------------------------------------------
+  # The ELIGIBILITY FLOOR + eligible/scored LEDGER. Computes eligibility
+  # (detect==0 AND fit>=fit_floor AND G>tau) in code and appends the
+  # candidate to the eligible set only if it clears all three — the hard
+  # gate before the human ever sees it. Snippet-typed so `eligible` /
+  # `eligible_count` are first-class slots (V13).
+  # ---------------------------------------------------------------------
+  cap.inspect.collect-candidate:
+    verb: inspect
+    lifecycle: experimental
+    description: >
+      Compute the three-floor eligibility (usable AND fit>=floor AND G>tau) for
+      a scored candidate and accumulate the eligible + scored ledgers in code.
+      The eligibility floors (tau, fit_floor) are passed in, not hard-coded. Only
+      eligible candidates enter the set the human prune presents.
+    snippet:
+      inputs:
+        tau:               { type: number,  required: true }
+        fit_floor:         { type: number,  required: true }
+        G:                 { type: number,  required: true }
+        fit:               { type: object,  required: true }
+        antipattern_count: { type: integer, required: true }
+        candidate:         { type: object,  required: true }
+        thumbnail:         { type: object,  required: true }
+        eligible_in:       { type: array,   required: true }
+        scored_in:         { type: array,   required: true }
+      outputs:
+        eligible:       { type: array }
+        scored:         { type: array }
+        eligible_count: { type: integer }
+        eligible_this:  { type: boolean }
+    initialState: collecting
+    states:
+      collecting:
+        goal: Apply the three eligibility floors; accumulate the ledgers in code.
+        transitions:
+          collect:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.collect-candidate
+              args:
+                - "$.workflow.input.tau"
+                - "$.workflow.input.fit_floor"
+                - "$.workflow.input.G"
+                - "$.workflow.input.fit"
+                - "$.workflow.input.antipattern_count"
+                - "$.workflow.input.candidate"
+                - "$.workflow.input.thumbnail"
+                - "$.workflow.input.eligible_in"
+                - "$.workflow.input.scored_in"
+            output:
+              eligible:       "$.output.json.eligible"
+              scored:         "$.output.json.scored"
+              eligible_count: "$.output.json.eligible_count"
+              eligible_this:  "$.output.json.eligible_this"
+      done: { terminal: true }
+
+  # ---------------------------------------------------------------------
+  # The seed-set OWNER (round-1 echo / refine converge). See
+  # scripts-library/run.set-seeds.yaml. One writer of `$.context.round_seeds`.
+  # ---------------------------------------------------------------------
+  cap.run.set-seeds:
+    verb: run
+    lifecycle: experimental
+    description: >
+      Own the round's seed set: echo the operator's input seeds on round 1, or
+      converge on the surviving direction (tightened seeds = [chosen.seed]) at
+      refine. The single use.outputs writer of the mutable seeds slot.
+    snippet:
+      inputs:
+        seeds_in: { type: array,  required: true }
+        chosen:   { type: object, required: true }
+      outputs:
+        seeds: { type: array }
+    initialState: setting
+    states:
+      setting:
+        goal: Emit the round's seed set (echo input, or converge on the survivor).
+        transitions:
+          set:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: run.set-seeds
+              args:
+                - "$.workflow.input.seeds_in"
+                - "$.workflow.input.chosen"
+            output:
+              seeds: "$.output.json.seeds"
+      done: { terminal: true }
+
+  # ---------------------------------------------------------------------
+  # THE ORCHESTRATOR.
+  # ---------------------------------------------------------------------
+  flow.anneal.structure-first:
+    lifecycle: experimental
+    description: >
+      Structure-first annealing spine (Increment I): diverge N candidates over an
+      app-appropriate seed set, render + score (G + fit + seed-adherence) + detect
+      each as sub-instances, and present ONLY the candidates clearing all three
+      eligibility floors (detect==0 AND fit>=floor AND G>tau) to a human prune,
+      then refine over the survivor with a tightened seed set — bounded by
+      max_rounds. Fails fast on PURPOSE_UNSET and DIVERGENCE_COLLAPSED (never
+      presents a collapsed set). Run-tree lineage is the exploration record.
+    inputs:
+      # The purpose (spec §4): app-type gate + the core-needs profile threaded to
+      # scoring. app_type "" ⇒ PURPOSE_UNSET (Increment I takes purpose as input,
+      # not a separate elicit gate — spec §9 Increment I scope).
+      app_type:    { type: string, default: "" }
+      # The app-type core-needs profile as a JSON string (score-axes `--profile`).
+      profile:     { type: string, default: "" }
+      # The seed set: hard, app-appropriate constraint-set OBJECTS (spec §3.2/§4.4).
+      seeds:       { type: array,  default: [] }
+      # Candidates per round (the fan-out cap).
+      n:           { type: integer, default: 3 }
+      # Eligibility floors (spec §6: from config/input, NOT magic numbers).
+      tau:         { type: number, default: 1.549 }   # G distinctiveness floor (Task-1 calibrated)
+      fit_floor:   { type: number, default: 1.0 }     # fit-for-purpose floor
+      # Abs path to this pack's scripts-library/ (holds score.mjs) — the engine
+      # exposes no pack-dir scope, so the operator threads it (Task-2 seam).
+      scripts_dir: { type: string, default: "" }
+      # Run artifacts dir (candidate HTML + thumbnails).
+      out_dir:     { type: string, default: "" }
+      # Bounds the refine loop (spec §6 "capped by max-rounds").
+      max_rounds:  { type: integer, default: 1 }
+    outputs:
+      eligible: { type: array }
+      scored:   { type: array }
+      chosen:   { type: object }
+      round:    { type: integer }
+      reason:   { type: string }
+    # Seed every declared output (V24) + the loop slots read before their first
+    # writer. `seeds` is (re)written by cap.run.set-seeds' use.outputs; the
+    # per-candidate slots below are written by the leaf caps' use.outputs.
+    initialContext:
+      eligible:              []
+      scored:                []
+      chosen:                {}
+      round:                 0
+      reason:                ""
+      seeds:                 []
+      seed_idx:              0
+      eligible_count:        0
+      pick_phase:            ""
+      current_seed:          "{}"
+      candidate_id:          ""
+      candidate:             {}
+      thumbnail:             {}
+      cand_G:                0
+      cand_fit:              {}
+      cand_antipattern_count: 0
+    initialState: seeding
+    states:
+
+      # Own the round-1 seed set from the operator's input (chosen is {} here, so
+      # set-seeds echoes seeds_in) — makes $.context.round_seeds a use.outputs slot the
+      # diverge picker can read.
+      seeding:
+        goal: Seed the round's working seed set from the input.
+        transitions:
+          seed:
+            target: purpose_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.set-seeds
+              use:
+                inputs:
+                  seeds_in: "$.workflow.input.seeds"
+                  chosen:   "$.context.chosen"
+                outputs:
+                  "$.context.round_seeds": seeds
+
+      # FAIL-FAST PURPOSE_UNSET (spec §4.5): no app_type ⇒ refuse to generate.
+      purpose_gate:
+        transitions:
+          proceed:
+            target: diverging
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.app_type != ''" }
+          unset:
+            target: fail_purpose
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.app_type == ''" }
+
+      fail_purpose:
+        goal: Record the PURPOSE_UNSET fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "PURPOSE_UNSET" }
+
+      # DIVERGE — the fan-out cursor. Picks the next seed (bounded by N) and
+      # advances the monotone cursor AT PICK TIME (so no arm rewinds it).
+      diverging:
+        goal: Pick the next seed to diverge on (or exhaust the round).
+        transitions:
+          pick:
+            target: diverge_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.next-seed
+              use:
+                inputs:
+                  seeds:    "$.context.round_seeds"
+                  seed_idx: "$.context.seed_idx"
+                  n:        "$.workflow.input.n"
+                outputs:
+                  "$.context.pick_phase":   phase
+                  "$.context.current_seed": current_seed
+                  "$.context.candidate_id": candidate_id
+                  "$.context.seed_idx":     next_idx
+
+      # BRANCH on the fan-out phase + the eligibility scalar. Exhausted with
+      # zero eligible ⇒ DIVERGENCE_COLLAPSED (never present a collapsed set);
+      # with >=1 eligible ⇒ the human prune.
+      diverge_gate:
+        transitions:
+          generate:
+            target: generating
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'picked'" }
+          prune:
+            target: pruning
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'exhausted'" }
+              - { kind: expr, expr: "$.context.eligible_count > 0" }
+          collapse:
+            target: fail_collapse
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'exhausted'" }
+              - { kind: expr, expr: "$.context.eligible_count == 0" }
+          unexpected:
+            target: fail_unexpected
+            actor: deterministic
+
+      fail_collapse:
+        goal: Record the DIVERGENCE_COLLAPSED fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "DIVERGENCE_COLLAPSED" }
+
+      fail_unexpected:
+        goal: Record a broken fan-out phase contract.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "UNEXPECTED_PICK_PHASE" }
+
+      # GENERATE one candidate for the picked seed (STUB in Increment I) — a
+      # kind:workflow sub-instance (run-tree lineage).
+      generating:
+        goal: Generate a candidate direction for the picked seed (sub-instance).
+        transitions:
+          generate:
+            target: rendering
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.generate-direction
+              use:
+                inputs:
+                  out_dir:      "$.workflow.input.out_dir"
+                  seed:         "$.context.current_seed"
+                  candidate_id: "$.context.candidate_id"
+                outputs:
+                  "$.context.candidate": candidate
+
+      # RENDER the candidate to a thumbnail (STUB SVG in Increment I). Fail-fast
+      # CANDIDATE_NOT_RENDERABLE lives in this cap (missing/unparseable artifact).
+      rendering:
+        goal: Render the candidate to a thumbnail ref (sub-instance).
+        transitions:
+          render:
+            target: scoring
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.render-thumbnail
+              use:
+                inputs:
+                  candidate:    "$.context.candidate.artifact"
+                  out_dir:      "$.workflow.input.out_dir"
+                  candidate_id: "$.context.candidate_id"
+                outputs:
+                  "$.context.thumbnail": thumbnail
+
+      # SCORE the candidate on independent axes: G (distinctiveness) + fit
+      # (fit-for-purpose) + seed-adherence, threading scripts_dir (Task-2 seam).
+      scoring:
+        goal: Score G + fit + seed-adherence (sub-instance; threads scripts_dir).
+        transitions:
+          score:
+            target: gating
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.score-axes
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  artifact:    "$.context.candidate.artifact"
+                  seed:        "$.context.current_seed"
+                  profile:     "$.workflow.input.profile"
+                outputs:
+                  "$.context.cand_g":   G
+                  "$.context.cand_fit": fit
+
+      # DETECT the usability floor (impeccable detect, LLM-free).
+      gating:
+        goal: Run the deterministic usability floor (sub-instance).
+        transitions:
+          detect:
+            target: collecting
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.detect-antipatterns
+              use:
+                inputs:
+                  artifact: "$.context.candidate.artifact"
+                outputs:
+                  "$.context.cand_antipattern_count": antipattern_count
+
+      # COLLECT — apply the three eligibility floors + accumulate the ledgers in
+      # code, then LOOP back to diverge the next seed.
+      collecting:
+        goal: Apply eligibility floors; accumulate the eligible/scored ledgers; loop.
+        transitions:
+          collect:
+            target: diverging
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.collect-candidate
+              use:
+                inputs:
+                  tau:               "$.workflow.input.tau"
+                  fit_floor:         "$.workflow.input.fit_floor"
+                  G:                 "$.context.cand_g"
+                  fit:               "$.context.cand_fit"
+                  antipattern_count: "$.context.cand_antipattern_count"
+                  candidate:         "$.context.candidate"
+                  thumbnail:         "$.context.thumbnail"
+                  eligible_in:       "$.context.eligible"
+                  scored_in:         "$.context.scored"
+                outputs:
+                  "$.context.eligible":       eligible
+                  "$.context.scored":         scored
+                  "$.context.eligible_count": eligible_count
+
+      # THE HUMAN PRUNE — present ONLY eligible candidates (each already clears
+      # all three floors) with their G/fit/thumbnail; keep one survivor. A
+      # sub-cap so `chosen` feeds refine's use.inputs (V13); the parent parks
+      # while the child awaits the human.
+      pruning:
+        goal: Human prunes the eligible set to one surviving direction.
+        transitions:
+          prune:
+            target: refine_route
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.gate.prune
+              use:
+                inputs:
+                  candidates: "$.context.eligible"
+                  prompt:     "Keep one eligible direction to refine (only candidates clearing detect/fit/G are shown)."
+                outputs:
+                  "$.context.chosen": chosen
+
+      # REFINE ROUTE — loop back over the survivor with tightened seeds unless
+      # the round budget is spent (spec §6 "capped by max-rounds").
+      refine_route:
+        transitions:
+          refine:
+            target: refining
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.round < $.workflow.input.max_rounds" }
+          finish:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.round >= $.workflow.input.max_rounds" }
+
+      # Converge the next round's seed set on the survivor (tightened seeds).
+      refining:
+        goal: Tighten the seed set around the surviving direction.
+        transitions:
+          tighten:
+            target: bumping
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.set-seeds
+              use:
+                inputs:
+                  seeds_in: "$.context.round_seeds"
+                  chosen:   "$.context.chosen"
+                outputs:
+                  "$.context.round_seeds": seeds
+
+      # BUMP the round counter + RESET the per-round loop slots on a DEDICATED
+      # noop-executor state (an output mutation on a bare guard transition is not
+      # applied — flow.pressure-test's V2 fix). Then diverge the next round.
+      bumping:
+        goal: Increment the round; reset the fan-out cursor + ledgers; loop.
+        transitions:
+          bump:
+            target: diverging
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              round:          { add: ["$.context.round", 1] }
+              seed_idx:       { set: 0 }
+              eligible:       { set: [] }
+              eligible_count: { set: 0 }
+              scored:         { set: [] }
+              chosen:         { set: {} }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure
