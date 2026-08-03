@@ -4,176 +4,222 @@
 
 ## 1. Thesis
 
-The highest-quality UI-design workflow is not "pick the best model." It is an **annealing
-pipeline**: maximize diversity early, then progressively reduce entropy — generate many
-directions, prune hard, refine the survivors — until one direction remains. This pack expresses
-that pipeline as a **governed praxec orchestrator**, with the generation tools wired as
+The highest-quality UI-design workflow is not "pick the best model." It is an **evolutionary
+annealing search with a warm start**: first converge on the human's **aesthetic foundation**
+(elicit their direction over *distinctive* references), then maximize diversity *within* that
+foundation, then progressively reduce entropy — mutate (variations), crossover (mix aspects of
+survivors), select (human prune) — under fitness floors, until one direction remains. This pack
+expresses that as a **governed praxec orchestrator**, with generation tools wired as
 connections/skills and the exploration lineage carried by praxec's own run tree.
 
-This is **UI design** — layout composition, aesthetics, style, components, motion. It is
-deliberately **distinct from `cognitive-architectures-max`, which is UX engineering** (JTBD,
-information architecture, product/research). Clear separation: **visual design here, UX
-engineering in max.** The two packs compose (max produces a UX/IA foundation → `design/*` does
-the visual design over it), but they do not overlap.
+**The warm start is deliberate (and departs from a cold "maximum-entropy-first" spread):** a wide
+cold spread wastes the human on obvious discards. The goal is a first spread where **every proposal
+is already good** — in-purpose (§4), in-aesthetic (the elicited foundation), and distinctive (§3) —
+so the human chooses among strong options instead of filtering junk. The foundation is elicited over
+the **distinctive-tail** reference set (§3.3), so it converges on "distinctive AND preferred," never
+the human's familiar-but-generic comfort zone; the learned taste profile (§3.6) warm-starts the
+elicitation on later runs so it shrinks over time.
 
-## 2. The load-bearing insight: it's pure workflow
+This is **UI design** — layout, aesthetics, style, components, motion — deliberately **distinct
+from `cognitive-architectures-max` (UX engineering: JTBD, IA, product/research).** Visual design
+here, UX engineering in max; they compose (max → a UX/IA foundation → `design/*` designs over it)
+but do not overlap.
 
-Every annealing stage maps onto a primitive praxec already has — **no engine change**:
+The search is pinned by **two co-equal, load-bearing requirements** — §3 and §4 — because the two
+existential failure modes pull against each other:
 
-| Annealing stage | praxec primitive (grounded) |
+- **§3 Distinctiveness** — don't ship the cookie-cutter LLM default.
+- **§4 Fit-for-purpose** — don't ship beautiful-but-wrong.
+
+Pushing either alone breaks the other; the pipeline holds both with independent floors.
+
+## 2. It's pure workflow (no engine change)
+
+Every stage maps onto a primitive praxec already has:
+
+| Stage | praxec primitive (grounded) |
 |---|---|
-| Research directions (inspiration) | `cap.research.directions` — deep-research real templates/visual references → offered direction options |
-| Generate MANY diverse candidates | fan-out via `executor: { kind: workflow, definitionId: … }` — one sub-instance per candidate (the `flow.execute-cohorts` cohort pattern) |
-| Branch a survivor into variations | more `kind: workflow` spawns under the parent candidate |
-| Render → thumbnail | `cap.render.thumbnail` — screenshot each candidate via the **browser MCP** (reused from the QA pack) → thumbnail ref in context |
-| Score on independent axes | `cap.score.axes` (`kind: agent`/`llm`) writing per-axis scores to `$.context` — no overall score |
+| Purpose brief | `cap.brief.purpose` — app-type + core-needs profile (from max, or lightweight intake) (§4) |
+| Research directions | `cap.research.directions` — deep-research the **distinctive tail** (§3) → grounded options + DNA |
+| Elicit aesthetic foundation (warm start) | `cap.elicit.aesthetic` — human reacts to distinctive refs → preference profile / seed direction (reuse elicitation-mcp) |
+| Generate MANY (mutate) | fan-out `executor:{ kind: workflow, definitionId: … }` — one sub-instance per candidate (the `flow.execute-cohorts` cohort pattern) |
+| Mix aspects (crossover) | `cap.recombine.aspects` — synthesize a child from aspects of several parents (§5) |
+| Render → thumbnail | `cap.render.thumbnail` — screenshot each via the **browser MCP** (reused from QA) |
+| Score (independent axes) | `cap.score.axes` — per-axis, **no overall**, incl. computed **G** (§3) + **fit** (§4) |
 | Deterministic quality gate | `cap.detect.antipatterns` — `npx impeccable detect --json` (`kind: cli`, LLM-free) |
-| One-screen prune (human) | **`cap.gate.human-disambiguate`** — `actor: human`, `presents: ["$.context.candidates"]`, `choices: { field, from, value, title }` (already exists in cognitive-architectures) |
-| LLM design critique | `cap.audit.impeccable` — `kind: agent` + the imported Impeccable skill |
-| Build into code | `cap.build.component` — `kind: agent`, reuse `cognitive/cap.implement.*` |
+| One-screen prune (human) | **`cap.gate.human-disambiguate`** — pick/branch/**compose**; decisions recorded as evidence |
+| LLM design critique | `cap.audit.impeccable` — `kind: agent` + imported Impeccable skill |
+| Build into code | `cap.build.component` — reuse `cognitive/cap.implement.*` |
 
-**Branching + lineage are free.** Every candidate is a workflow instance with a `run_id` (the
-exploration tree) and a `parent` (the branch it came from), persisted in the store, queryable via
-`praxec.query`. The ref's "git-style branching, never overwrite, lineage always visible" **is** the
-praxec run tree.
+**Branching + lineage are free:** each candidate is a workflow instance with a `run_id` (the
+exploration tree) and `parent`(s) (mutation = one parent; crossover = multiple, recorded in
+evidence). The ref's "git-style branching, lineage visible" **is** the praxec run tree.
 
-## 3. The three-way boundary (what is / isn't in this pack)
+## 3. Anti-homogenization — CORE REQUIREMENT #1
 
-1. **The annealing spine = pure workflow** (this pack): research → diverge → render → score → gate
-   → narrow → audit → code, with governance (cost gates, evidence, HITL), branching, lineage.
-2. **The generation tools = connections/skills** (config, not engine): see §6.
-3. **The one-screen gallery = a Mission Control cockpit view** (host superpower, not this pack):
-   the Lightroom-style canvas of 30–60 live thumbnails with visual branch-pruning. The pack exposes
-   candidates + per-axis scores + run-tree lineage via `praxec.query` and the selection gate via
-   HITL; a **dumb renderer (thumbnails + a pick call) is sufficient**. This is Mission Control's
-   flagship view, not an engine/workflow change.
+The existential failure: **LLM mode collapse** — every generator regresses to the "default web
+aesthetic" (Inter, dark gradients, rounded cards, the SaaS/Vercel clone). A naive annealer narrows
+*within* the collapsed space → 30 look-alikes → "best cookie-cutter" → mediocrity with false
+confidence. The pipeline is **architected against its generators' priors.** Through-line: **turn
+"distinctive" from an LLM opinion into a computed, calibrated measurement, with fail-fast on
+collapse.**
 
-## 4. Orchestrator shape + ordering modes
+1. **Genericness axis `G` (computed, not vibes)** — embedding distance of the rendered thumbnail
+   from a curated **generic corpus** centroid. High `G` = far from cookie-cutter. `G < τ` →
+   **ineligible**. Never an LLM taste opinion (which shares the disease).
+2. **Diversity as hard, verifiable constraints — not labels** — a seed ("brutalist / asymmetric /
+   serif-display / mono+1") is a constraint set the generator must satisfy, **checked against the
+   rendered CSS/DOM** (did the corners stay square, the grid asymmetric, the type serif?).
+3. **Reference DNA from the distinctive tail** — `cap.research.directions` targets award-tier /
+   editorial / print / cross-domain refs and extracts specific DNA; refs that cluster at the generic
+   centroid are **rejected** (`RESEARCH_RETURNED_GENERIC_HEAD`).
+4. **Decouple judge from generator** — subjective axes judged by a **different model family**; `G`
+   is computed; the **human prune is the taste authority** (no auto-select on LLM taste).
+5. **Deterministic usability floor (TRIZ: novelty ↔ usability)** — novelty differentiates only among
+   candidates that clear the `impeccable detect` gate + a11y/hierarchy floors. Novelty runs free in
+   generation; unusable output can never ship.
+6. **Human taste captured as evidence + learned** — each prune (chosen + rejected + `G`/axis
+   context) → evidence → the flywheel builds a **per-operator taste profile** biasing future seeds.
+7. **Testable acceptance (TDD)** — a **golden fixture set** (distinctive vs generic) the `G`-metric
+   MUST rank correctly (unit test); every shippable candidate MUST clear **`G > τ` AND detect = 0
+   AND seed/DNA adherence.** Pack CI gates.
 
-Structure (layout) and style are two annealing **axes** with different cost-of-change — structure
-is expensive to change late, style is a cheap re-skin. That asymmetry drives the ordering, and the
-pack supports **three modes over the same shared capabilities** (thin orchestrators, near-zero
-extra cost):
+## 4. Fit-for-purpose — CORE REQUIREMENT #2
 
-- **`design/flow.anneal.structure-first`** (DEFAULT) — anneal the expensive axis first: diverge
-  *layout/composition* → prune → then diverge *style* over the chosen layout → prune → refine.
-  Matches the ref (archetype → 5 styles) and design-system practice (tokens over structure).
-- **`design/flow.anneal.style-first`** — for brand-/aesthetic-led work where the visual direction
-  drives layout: diverge *style* → prune → layout within it.
-- **`design/flow.anneal.grid`** — fan out layout × style *simultaneously* (the ref's 6×5 = 30 on
-  one screen) and prune the 2-D grid. Closest to the one-screen gallery.
+The counterpart failure: **beautiful-but-wrong.** Distinctiveness pressure (§3) *increases* the risk
+of designs that don't serve the app's actual job — a data dashboard rendered like a fashion
+editorial. Fit-for-purpose is a **co-equal floor**, held by the symmetric mechanism:
 
-All three compose the same `cap.*` and share the loop:
+1. **Purpose brief at the top** — `cap.brief.purpose` establishes the **app-type + core-needs
+   profile** before any generation. Sourced from the **max** pack's UX output when present, else a
+   lightweight intake here. A short, explicit taxonomy → core-needs profile, e.g.:
+   - *analytics/dashboard* → density, scannability, data hierarchy, low-chrome;
+   - *marketing/landing* → conversion, narrative, hero, social proof;
+   - *developer tool* → code/content density, keyboard, dark, docs-forward;
+   - *e-commerce* → product-forwardness, trust, checkout clarity;
+   - *consumer/social* → delight, onboarding, motion, thumb-reach.
+2. **Fit-for-purpose scoring axis** — `cap.score.axes` scores how well each candidate serves the
+   *core-needs profile* (independent axis, **no overall**; grounded in the brief, not free vibes).
+3. **Fit as an eligibility floor** — symmetric to the usability floor: a distinctive candidate that
+   **fails fit-for-purpose is ineligible**, not "interesting." (TRIZ separation: explore novelty,
+   **enforce** fit — get both, not a compromise.)
+4. **App-appropriate seeding** — diversity seeds are **bounded by app-type**: a dashboard's seed set
+   won't include "playful marketing hero." Divergence stays wide but on-purpose.
+5. **Fail-fast** — a run with no purpose brief refuses to generate (`PURPOSE_UNSET`); a round where
+   all candidates fail the fit floor → `NO_FIT_FOR_PURPOSE` (don't prune off-purpose designs).
 
-```
-research → diverge → render → score → [detect gate] → PRUNE (human) → refine ↺ → audit → code → done
-                                                          │
-                                             loops back to refine until one remains
-```
-
-- **research** (`cap.research.directions`) seeds diversity from *real* references (Q3): deep-research
-  common templates + visual sites, cluster into candidate directions, present options — so
-  divergence starts from grounded inspiration, not a cold model.
-- **diverge** stages are the fan-out primitive at different entropy, parameterized by a **diversity
-  seed** (Stage-1 barely-resemble archetypes; Stage-2 {minimal, editorial, swiss, playful,
-  premium}; late-stage micro-variations of type/spacing/radius only). Diversity is **enforced** by
-  the seed set + a cheap "no two within ε" novelty check, not hoped for.
-- **prune** is the one human-park point (`cap.gate.human-disambiguate`); the cockpit answers it.
-- The loop is **narrow-until-one**, bounded by the human + a max-rounds guard.
+**§3 and §4 together** define the eligibility a candidate must clear to reach the human prune:
+`detect = 0 (usable) AND fit ≥ floor (right) AND G > τ (distinctive)`. Novelty is the differentiator
+*among* candidates that are already usable, right, and distinctive.
 
 ## 5. Capabilities (`design/cap.*`)
 
 | Capability | Kind | Role |
 |---|---|---|
-| `cap.research.directions` | agent + web (deep research) | inspiration: real templates/visual refs → clustered direction options |
-| `cap.generate.direction` | agent (design affinity) / 21st MCP | one candidate for a diversity seed; emits a rendered artifact |
-| `cap.render.thumbnail` | mcp (browser, reuse QA) | screenshot each candidate → thumbnail ref |
-| `cap.score.axes` | agent / llm | per-axis scores (hierarchy, type, density, novelty, brand, a11y, conversion, interaction, motion, impl-complexity) — **no overall** |
-| `cap.detect.antipatterns` | cli (`npx impeccable detect --json`) | deterministic, LLM-free design-quality gate |
-| `cap.cluster.candidates` | llm / deterministic | group candidates so the human prunes clusters not singletons |
-| `cap.gate.human-disambiguate` | HITL (reuse `cognitive/*`) | the prune / pick gate |
-| `cap.audit.impeccable` | agent + imported Impeccable skill | LLM design critique (hierarchy, spacing, contrast, anti-patterns, UX-writing) |
-| `cap.render.hero` | rest (Higgsfield) | hero imagery + motion, finalist only |
-| `cap.build.component` | agent (coding affinity, reuse `cognitive/cap.implement.*`) | production component build of the winner |
+| `cap.brief.purpose` | agent / intake (or max output) | app-type + core-needs profile (§4) |
+| `cap.research.directions` | agent + web | distinctive-tail references + DNA (§3.3) |
+| `cap.elicit.aesthetic` | HITL (reuse elicitation-mcp) | **warm start** — human reacts to distinctive refs → aesthetic foundation (preference profile + seed direction) that bounds divergence so the first spread is all-good; taste profile (§3.6) warm-starts it on later runs |
+| `cap.generate.direction` | agent (design affinity) / 21st MCP | one candidate for a **hard-constraint, app-appropriate** seed; verified renderable artifact |
+| `cap.recombine.aspects` | agent (design affinity) | **crossover / mix-and-match** — synthesize a child from selected aspects of N parents (header/cards/palette/type/motion), **re-harmonized** (Impeccable vocab), same gates apply; multi-parent lineage |
+| `cap.render.thumbnail` | mcp (browser, reuse QA) | screenshot → thumbnail ref |
+| `cap.score.axes` | agent/llm + **computed G** | per-axis incl. **G** (§3) + **fit-for-purpose** (§4) + seed-adherence; **no overall** |
+| `cap.detect.antipatterns` | cli (`impeccable detect --json`) | deterministic LLM-free usability floor |
+| `cap.cluster.candidates` | llm / deterministic | group so the human prunes clusters not singletons |
+| `cap.gate.human-disambiguate` | HITL (reuse `cognitive/*`) | prune: **keep / branch / compose(recombine) / reject**; decisions → evidence |
+| `cap.audit.impeccable` | agent + imported Impeccable skill | LLM design critique (finalist) |
+| `cap.render.hero` | rest (Higgsfield) | hero + motion, finalist only |
+| `cap.build.component` | agent (coding affinity, reuse `cognitive/*`) | production build of the winner |
 
-**Model affinity split (per your call):** the *generation* caps bind a **design affinity** — best
-served by a **multi-model panel via 21st AI** (the annealing thesis: don't bet on one model, let
-them all pitch; a strong single model like Kimi3 is one voice in the panel, and the per-axis
-scoring + de-escalation flywheel can A/B it rather than us guessing). The *build* cap binds a
-**coding affinity** — "built by other agents" (a coding model). praxec's affinity→model binding
-does this natively; the two are separate bindings in `models.yaml`.
+**Recombination detail:** `cap.recombine.aspects` takes `{ parents: [candidate_ids], aspects: {header:A, cards:B, palette:C, type:D, motion:E} }` → a synthesized candidate. It **re-harmonizes** (spliced aspects are reconciled via the Impeccable design vocabulary, not pasted) and is subject to the **same eligibility** (detect + fit + G) plus a coherence check — an incoherent frankendesign is rejected, never shipped. This is the evolutionary **crossover** operator; the prune gate's *compose* action invokes it with the human's aspect selection.
 
-## 6. Tool dependencies (integration surfaces)
+**Model affinity split:** *generation/recombine* caps bind a **design affinity** — a **multi-model
+panel via 21st** (cross-model collapse differs → the panel is itself an anti-homogenization
+mechanism; a strong single model like Kimi3 is one *voice*, validated by `G`/fit + the flywheel,
+not assumed). The *build* cap binds a **coding affinity** ("built by other agents").
 
-- **21st AI / 21st MCP** — parallel frontier-model generation + production components → `kind: mcp`
-  connection (declared in `praxec/packs`, provisioned via `praxec tools install`). Third-party/paid
-  → **community-and-premium lane** (API key via `providers.env`).
-- **Impeccable** — **NOT a service** (no MCP, no REST; open-source Apache-2.0 skill pack by Paul
-  Bakaus, `impeccable.style`). Two-part integration:
-  1. **`kind: agent` + imported skill vocabulary** — vendor its Apache-2.0 skill (typography, OKLCH
-     color/contrast, spatial, motion, interaction, responsive, UX-writing; commands
-     shape/craft/critique/polish/…) as a **hash-pinned skill** in this pack; the generation + audit
-     caps are governed agents that use it.
-  2. **`kind: cli` deterministic gate** — wrap `npx impeccable detect --json` (LLM-free
-     anti-pattern rules, no auth) as `cap.detect.antipatterns`, a fast quality gate *before* the LLM
-     critique. No network, no keys.
-- **Higgsfield** — hero imagery + motion (finalist only) → `kind: rest` connection (API key via
-  `providers.env`). Third-party/paid → community-and-premium lane.
-- **Browser MCP** — reuse the QA pack's browser connection for `cap.render.thumbnail`.
+## 6. Orchestrator shape + ordering modes
 
-The pack ships **reference** connections operators copy/grant; nothing runs a tool the operator
-hasn't granted. Impeccable's skill is vendored in-pack (license permits redistribution).
+Structure (layout) and style are two axes with different cost-of-change. Three modes over the
+**same shared caps** (thin orchestrators):
 
-## 7. Pack structure (repo)
+- **`flow.anneal.structure-first`** (DEFAULT) — diverge layout → prune → diverge style over it →
+  prune → refine.
+- **`flow.anneal.style-first`** — brand-/aesthetic-led.
+- **`flow.anneal.grid`** — fan out layout × style simultaneously, prune the 2-D grid.
+
+Loop (every mode):
+```
+purpose → research → ELICIT aesthetic foundation → diverge(within foundation) → [recombine]
+       → render → score(G + fit) → detect-gate
+       → PRUNE(human: keep/branch/compose/reject) → refine ↺ → audit → hero → code → done
+```
+Bounded (N/round), enforced (hard seeds + G floor + fit floor + app-appropriate seeds + the
+elicited aesthetic foundation), human-gated, capped by max-rounds + the cost gate. The aesthetic
+foundation is what makes the **first** spread all-good rather than a cold wide spread of discards.
+
+## 7. Tool dependencies (integration surfaces)
+
+- **21st AI / 21st MCP** — parallel frontier generation → `kind: mcp` (registry + `tools install`,
+  community-and-premium lane; key via `providers.env`).
+- **Impeccable** — **not a service** (Apache-2.0 skill pack, `impeccable.style`; no MCP/REST):
+  (1) `kind: agent` + **vendored hash-pinned skill** for generation/recombine/critique;
+  (2) `kind: cli` `npx impeccable detect --json` as the deterministic gate (no auth/network).
+- **Higgsfield** — hero + motion (finalist only) → `kind: rest` (key via `providers.env`).
+- **Browser MCP** — reuse QA connection for `cap.render.thumbnail`.
+- **Corpora + fixtures** — generic-corpus + distinctive-corpus (back `G`) + the golden
+  distinctive-vs-generic set + per-app-type core-needs profiles (back fit). Maintained fixtures.
+
+## 8. Pack structure
 
 ```
 praxec/design
-  praxec.repo.yaml          # schema praxec.repo/v1, namespace: design
+  praxec.repo.yaml          # praxec.repo/v1, namespace: design
   orchestrators/            # flow.anneal.structure-first (default), .style-first, .grid
   capabilities/             # the cap.* above
-  skills/                   # vendored Impeccable skill (Apache-2.0, hash-pinned) + design-vocabulary skills — LOCAL to design (Q4)
-  connections/              # REFERENCE 21st (mcp), higgsfield (rest), impeccable-detect (cli), browser (mcp) templates
-  docs/                     # this spec + guides
+  skills/                   # vendored Impeccable skill (Apache-2.0, hash-pinned) + design-vocabulary — LOCAL to design
+  connections/             # REFERENCE 21st(mcp), higgsfield(rest), impeccable-detect(cli), browser(mcp)
+  fixtures/                # generic/distinctive corpora, golden set, app-type core-needs profiles
+  docs/
 ```
 
-Consumed via `repos: [{ uri: git+https://github.com/praxec/design, ref: main }]` (always-latest)
-or a local `path:`. Every id is `design/`-prefixed. Design-vocabulary skills stay **local to
-`design/`** (not in max) to keep the visual-design ↔ UX-engineering boundary clean (Q4).
+## 9. Increment plan (anti-collapse AND fit on the critical path)
 
-## 8. Increment plan (build small)
+- **Increment I — governed spine WITH both floors + the warm start.** `flow.anneal.structure-first`:
+  purpose → research(distinctive-tail) → **elicit aesthetic foundation** → diverge(**hard,
+  app-appropriate, in-foundation seeds**, 21st) → render(browser) →
+  score(**G + fit** + seed-adherence) → **detect gate** → prune(human, contact-sheet surface,
+  decisions recorded) → refine → done. **Exit = the acceptance contracts:** golden set ranks
+  correctly; candidates are demonstrably `G > τ`, fit ≥ floor, detect-clean, seed-adherent — or the
+  increment isn't done. All fail-fasts wired (`PURPOSE_UNSET`, `DIVERGENCE_COLLAPSED`,
+  `NO_FIT_FOR_PURPOSE`, `SCORE_UNCALIBRATED`, `CANDIDATE_NOT_RENDERABLE`). (No recombine/Impeccable-
+  skill/Higgsfield/cockpit yet.)
+- **Increment II — crossover, full toolchain, modes.** `cap.recombine.aspects` (mix-and-match) +
+  the gate's compose action; `cap.audit.impeccable` (skill) + `cap.render.hero` + `cap.cluster`;
+  `style-first` + `grid`; taste-profile learning to the flywheel; register 21st/Higgsfield.
+- **Increment III — the gallery cockpit.** Mission Control one-screen view (thumbnails + axis scores
+  incl. G/fit + lineage tree + pick/compose). Consumes pack state; no pack change.
 
-- **Increment I — governed spine, one generator + the deterministic gate.**
-  `flow.anneal.structure-first` with research → diverge → render(browser) → score → detect-gate →
-  prune → refine → done, using **21st MCP** for generation, `cap.render.thumbnail`, `cap.score.axes`,
-  `cap.detect.antipatterns` (impeccable detect CLI), and the existing `cap.gate.human-disambiguate`.
-  Prove the loop end-to-end + run-tree lineage, driven headless + resumed at the human gate. No
-  Impeccable LLM-skill, no Higgsfield, no cockpit yet.
-- **Increment II — full toolchain + modes.** Add `cap.audit.impeccable` (imported skill) +
-  `cap.render.hero` (Higgsfield) + `cap.cluster.candidates`; add `flow.anneal.style-first` +
-  `.grid`; register 21st/Higgsfield in `praxec/packs`.
-- **Increment III — the gallery cockpit.** The Mission Control one-screen view (thumbnails + axis
-  scores + lineage tree + the pick call). Consumes this pack's state; no pack change.
+## 10. Decisions & finer open items
 
-## 9. Decisions (resolved) & finer open items
+**Resolved:** Impeccable = skill + `detect` CLI gate. Browser-MCP thumbnails. Research = distinctive
+tail + DNA. Visual skills local to `design/`. Ordering = structure-first + style-first + grid.
+Model split = 21st panel (Kimi3 a voice) vs coding build. **Two co-equal core requirements —
+distinctiveness (§3) + fit-for-purpose (§4) — with independent eligibility floors, both on
+Increment I's critical path.** Mix-and-match = a crossover capability (Increment II) making the
+search evolutionary.
 
-**Resolved:**
-- **Q1 Impeccable surface** — analyzed: open-source Apache-2.0 skill pack, no MCP/REST. Integrate
-  as `kind: agent` + vendored skill, plus `npx impeccable detect --json` as a `kind: cli` gate.
-- **Q2 thumbnails** — reuse the QA **browser MCP** to screenshot each candidate (`cap.render.thumbnail`).
-- **Q3 diversity** — add a **research/inspiration step** (`cap.research.directions`) that
-  deep-researches real templates/visual refs and offers grounded direction options, feeding
-  divergence; plus explicit seeds + a novelty check.
-- **Q4 boundary** — visual/UI design + its skills stay **local to `design/`**; UX engineering stays
-  in `-max`. The packs compose, don't overlap.
-- **Ordering** — **structure-first default**, with style-first + grid as sibling orchestrators over
-  shared caps (three modes, near-zero extra cost).
-- **Model split** — design-generation affinity (21st multi-model panel; Kimi3 a candidate voice,
-  validated by scoring + flywheel) vs coding affinity for the build (other agents).
+**Finer open items (Increment-I / wiring):** the `G` metric (thumbnail-embedding vs structural
+diff; `τ` from the golden set); fit scoring grounding (how much is checklist-deterministic vs LLM);
+corpus + core-needs-profile curation (the accepted `Low` operational residual); seed-adherence
+parseability; recombination coherence check; 21st/Higgsfield exact surfaces + cost.
 
-**Finer open items:**
-- **Where the winner's code lands** — reuse `cognitive/cap.implement.*` into a writable `repo_root`,
-  same as the SWE flows.
-- **21st MCP exact tool names + auth** — confirm at wiring time (its MCP surface).
-- **Higgsfield API shape + cost** — confirm; hero/motion is finalist-only to bound spend.
-- **Novelty metric** — how "no two within ε" is computed (embedding distance on rendered thumbnails
-  vs a cheap structural diff). To decide in Increment I.
+## 11. FMECA provenance
+
+§3 + §4 + the Increment-I re-sequence are mitigations from a failure-mode analysis whose two primary
+risks — **mode collapse** (beautiful-cookie-cutter) and **not-fit-for-purpose** (beautiful-but-
+wrong), each S:High P:High and pulling against each other — were reduced to Low by: moving both
+"distinctive" and "fit" from LLM opinion to **computed/grounded signals with eligibility floors and
+fail-fast**, enforcing diversity as **hard, app-appropriate constraints + cross-model**, using the
+deterministic Impeccable gate as the **usability floor**, and putting both floors on the **critical
+path** (TRIZ separations: novelty↔usability and novelty↔fit). Residual: corpus/profile curation
+(Low, operational).
