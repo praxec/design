@@ -1,0 +1,73 @@
+# scripts-library/verify.candidate-renderable.yaml
+#
+# The coding-write-evidence VERIFIER for the REAL generation cap
+# (design/cap.implement.generate-direction). The generation agent's own claim is
+# NOT trusted: this deterministic step re-opens the candidate at its COMPUTED
+# path and confirms a real, parseable HTML file was written. It is the fail-fast
+# CANDIDATE_NOT_RENDERABLE gate (spec §5/§9) for model-driven generation — the
+# symmetric counterpart of run.render-thumbnail's own parse check.
+#
+#   Args: [out_dir, seed_json, candidate_id?]
+#     out_dir       directory the agent was told to write into
+#     seed_json     the seed constraint set (echoed into the candidate object)
+#     candidate_id  stable id — the artifact filename is candidate-<id>.html
+#
+# Emits (ALWAYS exit 0 — routing is done by the cap's verify_gate on `renderable`):
+#   { renderable: true,  candidate: { id, artifact, seed, generator }, reason: "" }
+#   { renderable: false, candidate: {},                                 reason: "CANDIDATE_NOT_RENDERABLE" }
+# Only a genuinely missing arg is a hard error (exit 2): a missing/unparseable
+# candidate is a first-class NOT_RENDERABLE verdict, not a crash.
+version: "1.0.0"
+scripts:
+  verify.candidate-renderable:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic candidate verifier. No LLM, no network.
+      const { existsSync, readFileSync } = require("node:fs");
+      const { join } = require("node:path");
+
+      const outDir = process.argv[2];
+      if (!outDir) {
+        console.error(JSON.stringify({ error: "OUT_DIR_UNSET" }));
+        process.exit(2);
+      }
+      let seed = {};
+      try {
+        seed = process.argv[3] ? JSON.parse(process.argv[3]) : {};
+      } catch {
+        // A bad seed is a caller error, not a candidate verdict.
+        console.error(JSON.stringify({ error: "SEED_UNPARSEABLE" }));
+        process.exit(2);
+      }
+      const id = process.argv[4] || "";
+      const artifact = join(outDir, `candidate-${id}.html`);
+
+      const notRenderable = (message) =>
+        console.log(JSON.stringify({
+          renderable: false,
+          candidate: {},
+          reason: "CANDIDATE_NOT_RENDERABLE",
+          message,
+        }));
+
+      // 1. The file must actually exist (a described-but-unwritten candidate).
+      if (!existsSync(artifact)) {
+        notRenderable(`candidate HTML was not written: ${artifact}`);
+        process.exit(0);
+      }
+      // 2. It must parse as HTML (same floor as run.render-thumbnail).
+      const html = readFileSync(artifact, "utf8");
+      if (!/<html|<!doctype|<body/i.test(html)) {
+        notRenderable(`candidate does not parse as HTML: ${artifact}`);
+        process.exit(0);
+      }
+      // Renderable — emit the candidate object (mirrors the stub contract so
+      // render/score/detect downstream is identical).
+      console.log(JSON.stringify({
+        renderable: true,
+        reason: "",
+        candidate: { id, artifact, seed, generator: "design-agent (design affinity → Kimi K3)" },
+      }));

@@ -364,8 +364,12 @@ workflows:
             output:
               reason: { set: "UNEXPECTED_PICK_PHASE" }
 
-      # GENERATE one candidate for the picked seed (STUB in Increment I) — a
-      # kind:workflow sub-instance (run-tree lineage).
+      # GENERATE one candidate for the picked seed — the REAL, model-driven
+      # generation cap (a `kind: agent` step bound to the `design` affinity →
+      # Kimi K3, running the pinned design skill). A kind:workflow sub-instance
+      # (run-tree lineage). Fails fast CANDIDATE_NOT_RENDERABLE inside the child;
+      # NEVER falls back to the offline stub (flow.anneal.structure-first.offline
+      # wires the stub for the headless drive test instead).
       generating:
         goal: Generate a candidate direction for the picked seed (sub-instance).
         transitions:
@@ -374,11 +378,12 @@ workflows:
             actor: deterministic
             executor:
               kind: workflow
-              definitionId: design/cap.run.generate-direction
+              definitionId: design/cap.implement.generate-direction
               use:
                 inputs:
                   out_dir:      "$.workflow.input.out_dir"
                   seed:         "$.context.current_seed"
+                  profile:      "$.workflow.input.profile"
                   candidate_id: "$.context.candidate_id"
                 outputs:
                   "$.context.candidate": candidate

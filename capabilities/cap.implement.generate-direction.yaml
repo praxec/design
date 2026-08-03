@@ -1,0 +1,164 @@
+# capabilities/cap.implement.generate-direction.yaml
+#
+# ======================== REAL GENERATION — spec §5 ========================
+# The PRODUCTION generation leaf of the annealing spine. Supersedes the
+# Increment-I stub (design/cap.run.generate-direction) — that stub is KEPT as
+# the offline test substrate (see its header + flow.anneal.structure-first.offline);
+# this cap NEVER falls back to it. If the model call fails, this cap FAILS FAST
+# (no silent stub substitution).
+#
+# WHAT IT DOES (spec §5 + the 2026-08-03 "Generation grounding" note):
+#   generation = `kind: agent` bound to the **design affinity** (→ Kimi K3 via
+#   the operator's models.yaml, swappable in one line) running the hash-pinned
+#   `implement.design-direction` skill over ONE hard-constraint, app-appropriate
+#   seed → writes ONE self-contained, distinctive HTML candidate. NOT 21st.
+#
+# ENGINE GROUNDING (V-rules, verified against the praxec source):
+#   - VERB (V1/V6): the cap uses the COGNITIVE verb `implement`. The earlier
+#     stub used the DETERMINISTIC verb `run` (correct for a script emitter), but
+#     a Deterministic verb's primary executor may not be an agent (V6). Real,
+#     model-driven generation is cognitive → `implement` (spec §5 anticipated
+#     exactly this verb shift: "becomes a cognitive cap under implement/compose").
+#   - AGENT PRIMARY (V6): `kind: agent` is NOT a legal INITIAL-state primary
+#     (V6 inspects the initial state; Cognitive primaries = mcp|noop|
+#     deterministic-authoring kinds). So the initial state is a `noop` prep gate,
+#     and the `kind: agent` step lives in the SECOND state (`generating`) — the
+#     grounded shape for an agent-driven cognitive cap.
+#   - AFFINITY: `affinity: design` is an OPEN activity key (AffinityRef falls
+#     back to Activity(<string>) for non-closed names), resolved against the
+#     operator's models.yaml `activity: { design: ... }` (see docs/models.example.yaml).
+#   - MODELS.YAML: any `kind: agent` step makes `gateway.models_yaml` a hard
+#     requirement at check + serve (AGENT_MODELS_YAML_REQUIRED). The operator
+#     points it at a models.yaml that binds the `design` activity to Kimi K3.
+#
+# FAIL-FAST CANDIDATE_NOT_RENDERABLE (coding-write-evidence discipline): the
+# agent's own claim is NOT trusted. `requires_file_write: true` already refuses
+# an agent turn with zero real write_file calls; then a DETERMINISTIC verifier
+# re-opens the candidate at its computed path and confirms it exists + parses as
+# HTML. A described-but-unwritten (or unparseable) candidate → terminal failure
+# with reason CANDIDATE_NOT_RENDERABLE. Never a stub, never a fabricated pass.
+workflows:
+  cap.implement.generate-direction:
+    verb: implement
+    lifecycle: experimental
+    tags: [design, generation, distinctive, fit-for-purpose, kimi]
+    description: >
+      REAL generation: a `kind: agent` step bound to the `design` affinity (→
+      Kimi K3, swappable) runs the hash-pinned implement.design-direction skill
+      over one hard-constraint, app-appropriate seed and WRITES one self-
+      contained, distinctive HTML candidate. Fail-fast CANDIDATE_NOT_RENDERABLE
+      when no real, parseable HTML file was written (no fallback to the stub).
+    snippet:
+      inputs:
+        # Directory to write the candidate HTML into (the run's artifacts dir).
+        out_dir:      { type: string, required: true }
+        # The hard-constraint seed set as a JSON string (corners/type/grid/…).
+        seed:         { type: string, default: "{}" }
+        # The app-type core-needs profile as a JSON string (fit-for-purpose §4).
+        profile:      { type: string, default: "" }
+        # Stable candidate id — the artifact filename is candidate-<id>.html.
+        candidate_id: { type: string, default: "" }
+      outputs:
+        candidate: { type: object }
+    initialState: preparing
+    initialContext:
+      renderable: false
+      candidate:  {}
+      reason:     ""
+    states:
+
+      # V6-legal initial primary (noop): a prep gate so the agent step is not the
+      # initial-state transition. Routes straight into generation.
+      preparing:
+        goal: Prepare to generate one candidate for the seed.
+        transitions:
+          prepare:
+            target: generating
+            actor: deterministic
+            executor: { kind: noop }
+
+      # THE REAL GENERATION STEP. `kind: agent` + design affinity + the pinned
+      # skill (in scope at state level → assembled as the system message). The
+      # goal (the task/user message) injects the seed, profile and exact output
+      # path. requires_file_write makes a zero-write turn a loud failure.
+      generating:
+        skills: [implement.design-direction]
+        goal: >
+          Generate ONE distinctive, fit-for-purpose UI-design direction.
+        transitions:
+          generate:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: design
+              requires_file_write: true
+              max_seconds: 900
+              owned_files:
+                - "{{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html"
+              goal: >
+                Generate ONE UI-design direction as a single self-contained,
+                renderable HTML file and WRITE it with your file-write tool to
+                EXACTLY this path (create the directory if needed):
+
+                  {{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html
+
+                candidate id: {{ $.workflow.input.candidate_id }}
+
+                Honor the HARD seed constraints (each key is a requirement a
+                deterministic scorer will verify against your rendered CSS/DOM):
+                  seed = {{ $.workflow.input.seed }}
+
+                Serve the app's core needs (fit-for-purpose):
+                  profile = {{ $.workflow.input.profile }}
+
+                Be distinctive — do NOT emit the generic default (Inter + dark
+                gradient + rounded cards + centered symmetric grid). Express the
+                seed's DNA in real compositional geometry. Inline ALL CSS; no
+                external fonts/styles/scripts/images. Write the file, then stop —
+                the file on disk is the deliverable, not a description of it.
+            output:
+              agent_report: "$.output"
+
+      # DETERMINISTIC verify (coding-write-evidence): recompute the artifact path
+      # and confirm a real, parseable HTML file was written. Emits the candidate
+      # object (mirrors the stub's { id, artifact, seed, generator } contract) and
+      # a `renderable` flag the gate routes on.
+      verifying:
+        goal: Verify the agent wrote a real, renderable HTML candidate.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.candidate-renderable
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.seed"
+                - "$.workflow.input.candidate_id"
+            output:
+              renderable: "$.output.json.renderable"
+              candidate:  "$.output.json.candidate"
+              reason:     "$.output.json.reason"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.renderable == true" }
+          not_renderable:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.renderable != true" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

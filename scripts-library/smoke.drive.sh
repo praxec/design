@@ -27,10 +27,17 @@ trap 'rm -rf "$WORK"' EXIT
 DB="$WORK/drive.db"
 CFG="$WORK/gateway.yaml"
 
+# gateway.models_yaml is REQUIRED because the pack now ships a `kind: agent`
+# cap (design/cap.implement.generate-direction) — the loader fails
+# AGENT_MODELS_YAML_REQUIRED at gateway build otherwise, even though this drive
+# never touches that cap. Point it at the pack's example models.yaml (must exist
+# + load); the OFFLINE twin below uses the deterministic stub, so no model
+# binding is ever resolved and no OpenRouter key/credit is needed.
 cat > "$CFG" <<YAML
 version: "1.0.0"
 gateway:
   principal: { subject: operator, roles: [human] }
+  models_yaml: "$PACK_DIR/docs/models.example.yaml"
 praxec:
   embeddings: { enabled: false }
   _writableRepos:
@@ -42,7 +49,9 @@ repos:
   - path: "$PACK_DIR"
 YAML
 
-DEF=design/flow.anneal.structure-first
+# The OFFLINE twin (stub generation) — production flow.anneal.structure-first
+# wires the real `kind: agent` generation and needs a live key/credit.
+DEF=design/flow.anneal.structure-first.offline
 pc() { praxec command --config "$CFG" "$@" 2>/dev/null; }
 pq() { praxec query   --config "$CFG" "$@" 2>/dev/null; }
 

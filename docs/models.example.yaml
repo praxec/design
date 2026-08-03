@@ -1,0 +1,42 @@
+# docs/models.example.yaml — EXAMPLE affinity→model bindings for praxec/design.
+#
+# COPY this into your OWN gateway config location and point `gateway.models_yaml`
+# at it; then set OPENROUTER_API_KEY in the environment. It is a REFERENCE
+# template — it holds NO secrets/keys (praxec reads the provider key from the
+# environment, never from this file). Do not commit your real key anywhere.
+#
+# The tiered economics of the pack (spec §4b) bind two affinities:
+#   - `design`  → FRONTIER: creative, high-value convergence (few candidates).
+#                 The lead voice is Kimi K3 (moonshotai/kimi-k3) — 1M ctx,
+#                 multimodal. SWAPPABLE in one line if aesthetics disappoint
+#                 (K3's proven strength is coding/agentic, not design-specific);
+#                 anti-homogenization #4 = bind MORE frontier models here as a
+#                 panel (each an additional pool member) once curated.
+#   - `rollout` → COMMODITY: mechanical propagation of an already-decided design
+#                 system across many surfaces. Applying fixed tokens, not
+#                 inventing taste → pay commodity rates and keep cost flat as the
+#                 site grows.
+#
+# `design` and `rollout` are OPEN activity keys (not the closed built-in
+# affinities), so they live under `activity:`, resolved by the `kind: agent`
+# steps' `affinity:` field. `default:` is the catch-all commodity chain.
+version: 1
+
+# Commodity catch-all — everything not named below resolves here.
+default:
+  - provider:
+      name: openrouter
+    model: deepseek/deepseek-v3.2
+
+# Open activity-keyed pools (spec §21 open activity chains).
+activity:
+  # Frontier design tier — the generation/recombine caps bind `affinity: design`.
+  design:
+    - provider:
+        name: openrouter
+      model: moonshotai/kimi-k3
+  # Commodity rollout tier — the build/rollout caps bind `affinity: rollout`.
+  rollout:
+    - provider:
+        name: openrouter
+      model: deepseek/deepseek-v3.2

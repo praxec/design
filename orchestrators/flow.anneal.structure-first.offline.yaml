@@ -1,0 +1,341 @@
+# orchestrators/flow.anneal.structure-first.offline.yaml
+#
+# ===================== OFFLINE TWIN — the headless drive test substrate =====
+# An EXACT twin of the production annealing spine (flow.anneal.structure-first)
+# that differs in ONE line: the `generating` step calls the OFFLINE STUB
+# (design/cap.run.generate-direction, a deterministic fixture emitter) instead
+# of the REAL model-driven cap (design/cap.implement.generate-direction, a
+# `kind: agent` step bound to the `design` affinity → Kimi K3).
+#
+# WHY A TWIN EXISTS (honest — it is a real duplication, forced by the engine):
+#   - praxec `kind: workflow` `definitionId:` is a STATIC, check-resolved
+#     reference (V22) — it cannot be parameterised per run, so "stub vs real
+#     generation" cannot be a runtime input to ONE orchestrator.
+#   - `kind: agent` is not a legal offline path (it requires models.yaml + a
+#     provider key/credit), and the pack's NO-FALLBACK rule forbids the real cap
+#     silently degrading to the stub.
+#   Therefore the production spine (real generation) and the offline drive test
+#   (stub generation) are two thin orchestrators over the SAME shared caps. The
+#   co-located cursor/ledger/seed caps (cap.inspect.next-seed, cap.inspect.
+#   collect-candidate, cap.run.set-seeds) are defined ONCE in
+#   flow.anneal.structure-first.yaml and REFERENCED here by id — only the flow
+#   wrapper is duplicated. flow.anneal.structure-first.yaml is the source of
+#   truth; keep this twin in sync with it (only the `generating` leaf differs).
+#
+# Driven by scripts-library/smoke.drive.sh (offline: no LLM, no browser, no key).
+# ===========================================================================
+
+workflows:
+
+  flow.anneal.structure-first.offline:
+    lifecycle: experimental
+    description: >
+      OFFLINE TWIN of flow.anneal.structure-first: identical measurement-gated
+      annealing spine, but the generation leaf uses the deterministic offline
+      STUB (design/cap.run.generate-direction) so the whole spine — fan-out →
+      render → score (G + fit + seed-adherence) → detect → eligibility → human
+      prune → collapse/purpose fail-fasts — is drivable HEADLESS + OFFLINE with
+      no OpenRouter key/credit. Test substrate only; production uses the real
+      model-driven flow.anneal.structure-first.
+    inputs:
+      app_type:    { type: string, default: "" }
+      profile:     { type: string, default: "" }
+      seeds:       { type: array,  default: [] }
+      n:           { type: integer, default: 3 }
+      tau:         { type: number, default: 1.549 }
+      fit_floor:   { type: number, default: 1.0 }
+      scripts_dir: { type: string, default: "" }
+      out_dir:     { type: string, default: "" }
+      max_rounds:  { type: integer, default: 1 }
+    outputs:
+      eligible: { type: array }
+      scored:   { type: array }
+      chosen:   { type: object }
+      round:    { type: integer }
+      reason:   { type: string }
+    initialContext:
+      eligible:              []
+      scored:                []
+      chosen:                {}
+      round:                 0
+      reason:                ""
+      seeds:                 []
+      seed_idx:              0
+      eligible_count:        0
+      pick_phase:            ""
+      current_seed:          "{}"
+      candidate_id:          ""
+      candidate:             {}
+      thumbnail:             {}
+      cand_G:                0
+      cand_fit:              {}
+      cand_antipattern_count: 0
+    initialState: seeding
+    states:
+
+      seeding:
+        goal: Seed the round's working seed set from the input.
+        transitions:
+          seed:
+            target: purpose_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.set-seeds
+              use:
+                inputs:
+                  seeds_in: "$.workflow.input.seeds"
+                  chosen:   "$.context.chosen"
+                outputs:
+                  "$.context.round_seeds": seeds
+
+      # FAIL-FAST PURPOSE_UNSET (spec §4.5): no app_type ⇒ refuse to generate.
+      purpose_gate:
+        transitions:
+          proceed:
+            target: diverging
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.app_type != ''" }
+          unset:
+            target: fail_purpose
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.app_type == ''" }
+
+      fail_purpose:
+        goal: Record the PURPOSE_UNSET fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "PURPOSE_UNSET" }
+
+      # DIVERGE — the fan-out cursor (shared cap).
+      diverging:
+        goal: Pick the next seed to diverge on (or exhaust the round).
+        transitions:
+          pick:
+            target: diverge_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.next-seed
+              use:
+                inputs:
+                  seeds:    "$.context.round_seeds"
+                  seed_idx: "$.context.seed_idx"
+                  n:        "$.workflow.input.n"
+                outputs:
+                  "$.context.pick_phase":   phase
+                  "$.context.current_seed": current_seed
+                  "$.context.candidate_id": candidate_id
+                  "$.context.seed_idx":     next_idx
+
+      diverge_gate:
+        transitions:
+          generate:
+            target: generating
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'picked'" }
+          prune:
+            target: pruning
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'exhausted'" }
+              - { kind: expr, expr: "$.context.eligible_count > 0" }
+          collapse:
+            target: fail_collapse
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'exhausted'" }
+              - { kind: expr, expr: "$.context.eligible_count == 0" }
+          unexpected:
+            target: fail_unexpected
+            actor: deterministic
+
+      fail_collapse:
+        goal: Record the DIVERGENCE_COLLAPSED fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "DIVERGENCE_COLLAPSED" }
+
+      fail_unexpected:
+        goal: Record a broken fan-out phase contract.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "UNEXPECTED_PICK_PHASE" }
+
+      # GENERATE one candidate for the picked seed — the OFFLINE STUB (the ONLY
+      # line that differs from the production spine).
+      generating:
+        goal: Generate a candidate direction for the picked seed (offline stub).
+        transitions:
+          generate:
+            target: rendering
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.generate-direction
+              use:
+                inputs:
+                  out_dir:      "$.workflow.input.out_dir"
+                  seed:         "$.context.current_seed"
+                  candidate_id: "$.context.candidate_id"
+                outputs:
+                  "$.context.candidate": candidate
+
+      rendering:
+        goal: Render the candidate to a thumbnail ref (sub-instance).
+        transitions:
+          render:
+            target: scoring
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.render-thumbnail
+              use:
+                inputs:
+                  candidate:    "$.context.candidate.artifact"
+                  out_dir:      "$.workflow.input.out_dir"
+                  candidate_id: "$.context.candidate_id"
+                outputs:
+                  "$.context.thumbnail": thumbnail
+
+      scoring:
+        goal: Score G + fit + seed-adherence (sub-instance; threads scripts_dir).
+        transitions:
+          score:
+            target: gating
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.score-axes
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  artifact:    "$.context.candidate.artifact"
+                  seed:        "$.context.current_seed"
+                  profile:     "$.workflow.input.profile"
+                outputs:
+                  "$.context.cand_g":   G
+                  "$.context.cand_fit": fit
+
+      gating:
+        goal: Run the deterministic usability floor (sub-instance).
+        transitions:
+          detect:
+            target: collecting
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.detect-antipatterns
+              use:
+                inputs:
+                  artifact: "$.context.candidate.artifact"
+                outputs:
+                  "$.context.cand_antipattern_count": antipattern_count
+
+      collecting:
+        goal: Apply eligibility floors; accumulate the eligible/scored ledgers; loop.
+        transitions:
+          collect:
+            target: diverging
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.collect-candidate
+              use:
+                inputs:
+                  tau:               "$.workflow.input.tau"
+                  fit_floor:         "$.workflow.input.fit_floor"
+                  G:                 "$.context.cand_g"
+                  fit:               "$.context.cand_fit"
+                  antipattern_count: "$.context.cand_antipattern_count"
+                  candidate:         "$.context.candidate"
+                  thumbnail:         "$.context.thumbnail"
+                  eligible_in:       "$.context.eligible"
+                  scored_in:         "$.context.scored"
+                outputs:
+                  "$.context.eligible":       eligible
+                  "$.context.scored":         scored
+                  "$.context.eligible_count": eligible_count
+
+      pruning:
+        goal: Human prunes the eligible set to one surviving direction.
+        transitions:
+          prune:
+            target: refine_route
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.gate.prune
+              use:
+                inputs:
+                  candidates: "$.context.eligible"
+                  prompt:     "Keep one eligible direction to refine (only candidates clearing detect/fit/G are shown)."
+                outputs:
+                  "$.context.chosen": chosen
+
+      refine_route:
+        transitions:
+          refine:
+            target: refining
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.round < $.workflow.input.max_rounds" }
+          finish:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.round >= $.workflow.input.max_rounds" }
+
+      refining:
+        goal: Tighten the seed set around the surviving direction.
+        transitions:
+          tighten:
+            target: bumping
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.set-seeds
+              use:
+                inputs:
+                  seeds_in: "$.context.round_seeds"
+                  chosen:   "$.context.chosen"
+                outputs:
+                  "$.context.round_seeds": seeds
+
+      bumping:
+        goal: Increment the round; reset the fan-out cursor + ledgers; loop.
+        transitions:
+          bump:
+            target: diverging
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              round:          { add: ["$.context.round", 1] }
+              seed_idx:       { set: 0 }
+              eligible:       { set: [] }
+              eligible_count: { set: 0 }
+              scored:         { set: [] }
+              chosen:         { set: {} }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure
