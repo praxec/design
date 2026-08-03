@@ -213,10 +213,22 @@ hash-pinned `scripts-library/` bodies. Later caps map to blessed verbs the same 
 
 **Recombination detail:** `cap.recombine.aspects` takes `{ parents: [candidate_ids], aspects: {header:A, cards:B, palette:C, type:D, motion:E} }` → a synthesized candidate. It **re-harmonizes** (spliced aspects are reconciled via the Impeccable design vocabulary, not pasted) and is subject to the **same eligibility** (detect + fit + G) plus a coherence check — an incoherent frankendesign is rejected, never shipped. This is the evolutionary **crossover** operator; the prune gate's *compose* action invokes it with the human's aspect selection.
 
-**Model affinity split:** *generation/recombine* caps bind a **design affinity** — a **multi-model
-panel via 21st** (cross-model collapse differs → the panel is itself an anti-homogenization
-mechanism; a strong single model like Kimi3 is one *voice*, validated by `G`/fit + the flywheel,
-not assumed). The *build* cap binds a **coding affinity** ("built by other agents").
+**Generation grounding (research 2026-08-03) — supersedes the earlier "21st panel" assumption:**
+- **Generation = `kind: agent` bound to a frontier design model + the imported design skill + hard
+  seeds**, generating a self-contained distinctive HTML candidate per seed. NOT 21st MCP — 21st is a
+  hosted, **shadcn/registry-biased** component tool (its `generate` writes shadcn-styled per-component
+  files into a repo), which fights distinctiveness and isn't "one standalone candidate"; its
+  multi-model fan-out isn't programmatically reachable. 21st stays in **reserve** only for
+  registry-backed shadcn components (a different job than `cap.run.generate-direction`).
+- **The lead design model = Kimi K3** (`moonshotai/kimi-k3` via OpenRouter; 1M ctx, multimodal).
+  Honest caveat: K3's strength is coding/agentic, **not** design-specific (unproven for UI) — so it's
+  bound behind the `design` **affinity**, swappable in one `models.yaml` line if aesthetics disappoint.
+- **Cross-model diversity (anti-homogenization #4)** = binding **multiple** frontier models directly
+  (a panel of agent bindings), since 21st's fan-out is unavailable. K3 is the first voice; add more.
+
+**Model affinity split:** *generation/recombine* caps bind the **design affinity → frontier**
+(Kimi K3 + a panel). The *build*/rollout caps bind a **coding/commodity affinity** ("built by other
+agents"). praxec's affinity→model binding does this natively.
 
 ## 6. Orchestrator shape + ordering modes
 
