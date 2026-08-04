@@ -10,9 +10,12 @@
 #   apply = `kind: agent` bound to the **rollout affinity** (→ deepseek via the
 #   operator's models.yaml, swappable in one line) running the hash-pinned
 #   `implement.roll-surface` skill over ONE surface + the captured token contract
-#   → writes ONE self-contained HTML surface that uses ONLY the design system's
-#   tokens, adapted to the surface's layout-type. COMMODITY propagation of an
-#   already-decided design (frontier designed it; this only rolls it out).
+#   → READS the target repo's EXISTING surface file (repo_root/<surface.file>) and
+#   REWRITES it IN PLACE, preserving its framework/markup/logic and changing only
+#   the design tokens/classes so it uses ONLY the design system's tokens, adapted to
+#   the surface's layout-type. COMMODITY propagation of an already-decided design
+#   (frontier designed it; this only rolls it out) — NOT a self-contained HTML
+#   generator; it edits the real files at their own paths.
 #
 # ENGINE GROUNDING (V-rules, mirrors cap.implement.generate-direction):
 #   - VERB (V1/V6): the COGNITIVE verb `implement` (the stub used the DETERMINISTIC
@@ -29,7 +32,8 @@
 # FAIL-FAST SURFACE_NOT_ROLLED (coding-write-evidence discipline): the agent's own
 # claim is NOT trusted. `requires_file_write: true` refuses an agent turn with zero
 # real write_file calls; then a DETERMINISTIC verifier (verify.surface-rolled)
-# re-opens the surface at its computed path and confirms it exists + parses as HTML.
+# re-opens the EDITED file at its own repo path (repo_root/<surface.file>) and
+# confirms it exists + is a real, non-empty source file.
 # The anti-regression token-adherence + detect gates run SEPARATELY in the
 # flow.rollout orchestrator (identical to the offline stub twin). Never a stub,
 # never a fabricated pass.
@@ -41,15 +45,17 @@ workflows:
     description: >
       REAL apply: a `kind: agent` step bound to the `rollout` affinity (→ deepseek,
       swappable) runs the hash-pinned implement.roll-surface skill over one surface
-      + the captured token contract and WRITES one self-contained HTML surface using
-      ONLY the design system's tokens, adapted to the layout-type. Fail-fast
-      SURFACE_NOT_ROLLED when no real, parseable HTML file was written (no fallback
-      to the stub).
+      + the captured token contract and EDITS the target repo's EXISTING surface file
+      IN PLACE (repo_root/<surface.file>) — preserving its framework/markup/logic and
+      changing only the design tokens/classes so it uses ONLY the design system's
+      tokens, adapted to the layout-type. Fail-fast SURFACE_NOT_ROLLED when no real,
+      non-empty file was written in place (no fallback to the stub).
     snippet:
       inputs:
-        # Directory to write the rolled surface into (the run's artifacts dir).
-        out_dir: { type: string, required: true }
+        # Absolute path to the target repo whose surface file is EDITED IN PLACE.
+        repo_root: { type: string, required: true }
         # The surface descriptor { id, file, layout_type } as a JSON object.
+        # `file` is the repo-relative path of the surface edited in place.
         surface: { type: object, required: true }
         # The captured token contract { colors, fonts, scale } as a JSON object.
         tokens:  { type: object, required: true }
@@ -91,32 +97,43 @@ workflows:
               affinity: rollout
               requires_file_write: true
               max_seconds: 900
-              # EXPLICIT file host rooted at the (absolute) out_dir so write_file /
-              # read_file are ALWAYS granted (same seam as generate-direction).
+              # EXPLICIT file host rooted at the (absolute) repo_root so read_file /
+              # write_file / edit_file are ALWAYS granted over the TARGET REPO (same
+              # seam as generate-direction's absolute-rooted file host). Absolute root
+              # ⇒ real file tools; a relative/empty root yields NO file tools →
+              # AGENT_NO_FILE_WRITES. The agent reads + rewrites the repo's own file.
               tools:
-                - "file:{{ $.workflow.input.out_dir }}"
+                - "file:{{ $.workflow.input.repo_root }}"
               owned_files:
-                - "{{ $.workflow.input.out_dir }}/rolled-{{ $.workflow.input.surface.id }}.html"
+                - "{{ $.workflow.input.surface.file }}"
               goal: >
-                Roll ONE surface to the approved design system as a single self-
-                contained, renderable HTML file and WRITE it with your file-write
-                tool. Your file tools are ROOTED at your working directory — use
-                RELATIVE paths. Write to EXACTLY this relative path:
+                EDIT ONE existing surface of the target repo IN PLACE so it adopts
+                the approved design system. Your file tools are ROOTED at the target
+                repo — use RELATIVE paths. FIRST read the existing surface, THEN
+                rewrite that SAME file in place (write_file / edit_file to the SAME
+                relative path). The file to edit is EXACTLY:
 
-                  rolled-{{ $.workflow.input.surface.id }}.html
+                  {{ $.workflow.input.surface.file }}
 
                 surface: {{ $.workflow.input.surface }}
+
+                PRESERVE the file's existing content, structure, framework, markup,
+                imports, and logic (it is `.astro` / `.css` / `.tsx` — keep the
+                markup, frontmatter, imports, and scripts). Change ONLY the design:
+                the tokens (colors / fonts / type sizes) and the classes/styles that
+                carry them. Do NOT convert the file to a self-contained HTML
+                document and do NOT drop or reorder content.
 
                 Use ONLY this token contract — its palette hexes and font stack are
                 a CLOSED set; a deterministic gate will BLOCK any off-system color
                 or font:
                   tokens = {{ $.workflow.input.tokens }}
 
-                Adapt the LAYOUT to the surface's layout_type (landing / blog /
-                utility / app-screen) while keeping the tokens + design DNA
-                constant. Inline ALL CSS; no external fonts/styles/scripts/images.
-                Write the file, then stop — the on-system file on disk is the
-                deliverable, not a description of it.
+                Adapt the design to the surface's layout_type (landing / blog /
+                utility / app-screen) while keeping the tokens + design DNA constant.
+                Rewrite the file, then stop — the edited file on disk, at its own
+                path, is the deliverable, not a description of it. A
+                described-but-unwritten edit is a FAILURE.
             output:
               agent_report: "$.output"
 
@@ -133,7 +150,7 @@ workflows:
               kind: script
               subject: verify.surface-rolled
               args:
-                - "$.workflow.input.out_dir"
+                - "$.workflow.input.repo_root"
                 - "$.workflow.input.surface"
                 - "$.workflow.input.attempt"
             output:

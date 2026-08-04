@@ -50,8 +50,10 @@ workflows:
       design_system_path: { type: string,  default: "" }
       # Absolute path to this pack's scripts-library/ (threaded to the script caps).
       scripts_dir:        { type: string,  default: "" }
-      # Directory to write rolled surfaces into.
-      out_dir:            { type: string,  default: "" }
+      # Absolute path to the TARGET REPO whose surface files are EDITED IN PLACE
+      # (each surface.file is relative to this root). The apply agent's file host is
+      # rooted here; the gates run on repo_root/<surface.file> (the edited file).
+      repo_root:          { type: string,  default: "" }
       # Bounded per-surface retry budget before a non-adherent surface flags
       # ROLLOUT_REGRESSED (a drifting commodity model is re-prompted, then flagged).
       max_retry:          { type: integer, default: 1 }
@@ -135,10 +137,11 @@ workflows:
             actor: deterministic
 
       # APPLY one surface — the REAL model-driven cap (the ONLY leaf that differs
-      # from the offline twin): a `rollout`-affinity agent WRITES the surface to the
-      # token contract + layout-type; a deterministic verifier confirms the write.
+      # from the offline twin): a `rollout`-affinity agent EDITS the target repo's
+      # existing file (repo_root/<surface.file>) IN PLACE to the token contract +
+      # layout-type; a deterministic verifier confirms the in-place write.
       applying:
-        goal: Roll the picked surface to the token contract (real deepseek).
+        goal: Roll the picked surface to the token contract in place (real deepseek).
         transitions:
           apply:
             target: verifying_tokens
@@ -148,10 +151,10 @@ workflows:
               definitionId: design/cap.implement.apply-design-system
               use:
                 inputs:
-                  out_dir: "$.workflow.input.out_dir"
-                  surface: "$.context.current_surface"
-                  tokens:  "$.context.tokens"
-                  attempt: "$.context.retry"
+                  repo_root: "$.workflow.input.repo_root"
+                  surface:   "$.context.current_surface"
+                  tokens:    "$.context.tokens"
+                  attempt:   "$.context.retry"
                 outputs:
                   "$.context.rolled_surface": rolled
 
