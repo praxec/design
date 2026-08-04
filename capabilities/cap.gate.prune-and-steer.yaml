@@ -52,6 +52,10 @@ workflows:
         candidates:    { type: array,  required: true }
         # The pre-built contact sheet ref ({ artifact }) from inspect.build-contact-sheet.
         contact_sheet: { type: object, required: true }
+        # Where the human can OPEN that sheet. Empty when the preview server did
+        # not start — the sheet is still on disk, so the gate still works; the
+        # URL is a convenience, never a precondition for deciding.
+        preview_url:   { type: string, default: "" }
         prompt:        { type: string, default: "Prune and steer: keep/branch/compose/reject each, and say what you like/dislike." }
       outputs:
         # The single survivor that feeds refine (MUST stay a pick-by-eq object, V13).
