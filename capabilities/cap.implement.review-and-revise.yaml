@@ -70,6 +70,7 @@ workflows:
     initialState: preparing
     initialContext:
       revised:        false
+      landed:         false
       assets_ok:      false
       copy_preserved: false
       renderable:     false
@@ -305,17 +306,53 @@ workflows:
       assets_gate:
         transitions:
           ok:
-            target: done
+            target: checking_landed
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.assets_ok == true" }
-            output:
-              revised: true
           stripped:
             target: restoring
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.assets_ok != true" }
+      # THE LAST GUARD, AND THE ONE THAT WAS MISSING. Every check above
+      # constrains what a revision MAY DO; none required that one HAPPENED. A
+      # pass that reported eight measured observations and eight changes, and
+      # wrote nothing, satisfied all of them — renderable (it is the original),
+      # copy preserved (identical to its own snapshot), artwork retained
+      # (identical). The report must match the disk.
+      checking_landed:
+        goal: Confirm the reported outcome is the outcome on disk.
+        transitions:
+          check:
+            target: landed_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.revision-landed
+              args:
+                - "$.context.candidate"
+                - "$.context.snapshot"
+                - "$.context.review_report"
+            output:
+              landed: "$.output.json.landed"
+              reason: "$.output.json.reason"
+
+      landed_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.landed == true" }
+            output:
+              revised: true
+          mismatch:
+            target: restoring
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.landed != true" }
+
       # A bad revision must never cost the human a candidate they might have
       # chosen. Put the pre-review file back and report why.
       restoring:

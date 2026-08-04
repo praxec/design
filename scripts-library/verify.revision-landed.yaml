@@ -1,0 +1,92 @@
+# scripts-library/verify.revision-landed.yaml
+#
+# The report must match the disk.
+#
+# OBSERVED: a review pass returned verdict "revised" with eight specific,
+# measured, entirely plausible observations ("the counts render at y=1418 on an
+# 850px viewport", "the page is ~56px wider than the viewport at 320px") and
+# eight changes each traced to a numbered instruction — and wrote NOTHING. The
+# candidate on disk was byte-identical to its own pre-review snapshot.
+#
+# Every existing guard passed, and passed VACUOUSLY:
+#   renderable      — it is the original, which parses
+#   copy_preserved  — identical to the snapshot, so no word changed
+#   assets_ok       — identical, so no asset moved
+#
+# All three constrain what a revision MAY DO. None require that one HAPPENED.
+# A model that describes work it did not do satisfies every one of them, and the
+# run is recorded as a success — the fabricated pass this pack exists to prevent,
+# arriving through the one door nobody had shut.
+#
+# WHY NOT `requires_file_write: true` (as cap.implement.generate-direction uses)?
+# Because generation MUST always write, and review must NOT. "The page is already
+# good, I changed nothing" is a legitimate and useful outcome — the review goal
+# explicitly asks for it, precisely so a reviewer is not pressured to invent work.
+# A blanket zero-write refusal would turn the honest answer into a failure, which
+# is the discard-surface anti-pattern cognitive/cap.implement.build-loop warns
+# about. So the check is not "did you write?" but "does what you SAID match what
+# is THERE?".
+#
+#   Args: [candidate_path, snapshot_path, review_report_json]
+#
+# Emits (ALWAYS exit 0 — the cap's gate routes on `landed`):
+#   { landed: true,  changed: bool, verdict: "...", reason: "" }
+#   { landed: false, changed: bool, verdict: "...",
+#     reason: "REVISION_NOT_WRITTEN" | "REPORT_CONTRADICTS_DISK" }
+# Only an unreadable file is a hard error (exit 2).
+version: "1.0.0"
+scripts:
+  verify.revision-landed:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      const { existsSync, readFileSync } = require("node:fs");
+      const { createHash } = require("node:crypto");
+
+      const candidate = process.argv[2];
+      const snapshot = process.argv[3];
+      for (const p of [candidate, snapshot]) {
+        if (!p || !existsSync(p)) {
+          console.error(JSON.stringify({ error: "PATH_MISSING", path: p || "" }));
+          process.exit(2);
+        }
+      }
+      const digest = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
+      const changed = digest(candidate) !== digest(snapshot);
+
+      // The report may arrive as an object, as a JSON string, or as prose. Read
+      // the verdict where it can be found and treat anything else as absent —
+      // never guess one.
+      let verdict = "";
+      const raw = process.argv[4] || "";
+      try {
+        const r = typeof raw === "string" && raw.trim().startsWith("{") ? JSON.parse(raw) : raw;
+        if (r && typeof r === "object" && typeof r.verdict === "string") verdict = r.verdict.trim();
+      } catch {
+        // Fall through: a report we cannot parse carries no verdict.
+      }
+
+      const out = (landed, reason) =>
+        console.log(JSON.stringify({ landed, changed, verdict: verdict || "(none)", reason }));
+
+      if (changed) {
+        // Work landed. A "no_change_needed" verdict alongside real edits is a
+        // report that contradicts its own artifact — same failure, other way up.
+        if (verdict === "no_change_needed") {
+          out(false, "REPORT_CONTRADICTS_DISK");
+          process.exit(0);
+        }
+        out(true, "");
+        process.exit(0);
+      }
+
+      // Nothing changed. That is CORRECT only if the reviewer explicitly said so.
+      // Silence plus no work is not a successful review: to claim "I looked and
+      // it is fine" you have to actually claim it.
+      if (verdict === "no_change_needed") {
+        out(true, "");
+        process.exit(0);
+      }
+      out(false, "REVISION_NOT_WRITTEN");
