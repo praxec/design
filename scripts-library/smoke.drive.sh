@@ -166,7 +166,11 @@ print("C2_IDS=%r"  % " ".join(x.get("id","") for x in c2elig))
 [ "$R2AVOID" = "color,space" ]    || fail "expected steer.avoid axes=[color,space], got [$R2AVOID]"
 # Valenced fold: the DIRECTION (toward), not just the axis, must reach the seed notes.
 case "$R2NOTES" in *"amplify: type→geometric sans"*) : ;; *) fail "valenced amplify not folded into round_seeds notes: '$R2NOTES'";; esac
-case "$R2NOTES" in *"avoid: color→restrained palette"*) : ;; *) fail "valenced avoid not folded into round_seeds notes: '$R2NOTES'";; esac
+# The REDIRECT target reaches the seed as an instruction to GO somewhere, not
+# as a prohibition: a human who asks for a restrained palette must never
+# produce "avoid: color→restrained palette" in the generation prompt.
+case "$R2NOTES" in *"on color, go toward: restrained palette"*) : ;; *) fail "valenced redirect not folded into round_seeds notes: '$R2NOTES'";; esac
+case "$R2NOTES" in *"avoid: color"*) fail "redirect target rendered as a prohibition (valence inverted): '$R2NOTES'";; *) : ;; esac
 echo "   loop closed: round=1 seeds carry the VALENCED steer → notes='$R2NOTES'  ✓"
 
 # Resume the round-1 gate → the parent reaches `done` / succeeded with a survivor.

@@ -46,10 +46,18 @@ const SEED_CHECKS = {
     want === "heavy" ? f.heavy_rules >= 0.5 : f.heavy_rules < 0.5,
 };
 
+// Keys the PIPELINE writes onto a seed that are metadata, not constraints.
+// run.set-seeds folds the human's steer into the surviving seed as `notes` +
+// `steer`; without this set, seedAdherence scores them as UNKNOWN_SEED_CONSTRAINT
+// and every candidate from the first refine round onward reports adherence
+// FAILED on the pack's own two keys — on the contact sheet the human prunes from.
+export const RESERVED_SEED_KEYS = new Set(["notes", "steer"]);
+
 export function seedAdherence(features, detect, seed) {
   if (!seed || Object.keys(seed).length === 0) return null;
   const checks = [];
   for (const [key, want] of Object.entries(seed)) {
+    if (RESERVED_SEED_KEYS.has(key)) continue;
     const fn = SEED_CHECKS[key];
     if (!fn) {
       checks.push({ constraint: key, want, pass: false, reason: "UNKNOWN_SEED_CONSTRAINT" });

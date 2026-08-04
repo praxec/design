@@ -81,7 +81,24 @@ scripts:
       // in the known non-blocking set (incl. missing/unknown high-severity names)
       // counts as blocking, so a new severity can never silently pass the floor.
       const NON_BLOCKING = new Set(["warning", "info", "notice"]);
-      const isBlocking = (f) => !NON_BLOCKING.has(String((f && f.severity) || "").toLowerCase());
+
+      // SELF-INFLICTED FINDINGS. This pack REQUIRES every candidate to be a single
+      // self-contained HTML file with "no external fonts/styles/scripts/images",
+      // so an inline <svg> is the ONLY way a candidate can show artwork at all.
+      // `shape-assembled-illustration` flags exactly that — it is a style
+      // observation about placeholder art, not a usability error, and it arrives
+      // at `advisory`, the same severity the genericness detectors use, so the
+      // floor was silently dropping candidates for obeying our own constraint.
+      // Worse, it scales with effort: the richer the placeholder plates, the more
+      // likely the drop. Observed live — a candidate the human ranked best never
+      // reached the prune gate. Exempt by IDENTITY, not by severity, so the
+      // genericness findings at the same severity keep their teeth.
+      const SELF_INFLICTED = new Set(["shape-assembled-illustration"]);
+      const isBlocking = (f) => {
+        const id = String((f && (f.antipattern || f.id)) || "").toLowerCase();
+        if (SELF_INFLICTED.has(id)) return false;
+        return !NON_BLOCKING.has(String((f && f.severity) || "").toLowerCase());
+      };
       const blocking = arr.filter(isBlocking);
       const warnings = arr.filter((f) => !isBlocking(f)).map((f) => ({
         antipattern: f && f.antipattern,
