@@ -108,11 +108,19 @@ export function tokenAdherence(source, contract) {
     FONT_FAMILY_RE.lastIndex = 0;
     while ((m = FONT_FAMILY_RE.exec(line)) !== null) {
       for (const fam of m[1].split(",")) {
+        const rawFam = fam.trim();
+        // A CSS var() reference is a TOKEN REFERENCE — inherently adherent: the
+        // referenced token's value is what must conform, and that is checked at its
+        // own definition. A token-driven site references its fonts as
+        // `font-family: var(--font-sans)`, so flagging the reference is a false positive.
+        if (/^var\s*\(/i.test(rawFam)) continue;
         const norm = normFamily(fam);
         if (!norm) continue;
         if (norm === "currentcolor" || norm === "transparent") continue;
+        // CSS-wide keywords are not fonts.
+        if (["inherit", "initial", "unset", "revert", "revert-layer"].includes(norm)) continue;
         if (!allowedFonts.has(norm)) {
-          off_system.push({ kind: "font", value: fam.trim(), line: ln });
+          off_system.push({ kind: "font", value: rawFam, line: ln });
         }
       }
     }

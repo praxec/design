@@ -95,3 +95,15 @@ test("the disk round-trip: an on-system surface read from a file is adherent", (
   const on = tokenAdherence(readFileSync(write(ON_SYSTEM), "utf8"), CONTRACT);
   assert.equal(on.adherent, true);
 });
+
+test("font-family var() references are adherent (token-driven site pattern)", () => {
+  // A token-driven site references its fonts as `font-family: var(--font-sans)`.
+  // The var() reference is inherently adherent — the referenced token's value is
+  // what conforms, checked at its own definition. Flagging the reference is a
+  // false positive that hard-failed the first real rollout on global.css.
+  const res = tokenAdherence(
+    ":root{--font-sans:Georgia,serif}\nbody{font-family:var(--font-sans)}\n.x{font-family:var(--font-mono) !important}",
+    CONTRACT
+  );
+  assert.equal(res.adherent, true);
+});
