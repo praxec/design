@@ -177,22 +177,37 @@ const CAP = readFileSync(
   "utf8",
 ).replace(/\s+/g, " ");
 
-test("the review step REQUIRES observations, changes and a verdict", () => {
-  assert.match(CAP, /required: \[observations, changes, verdict\]/);
+// The contract lives in the TASK, not in a required inputSchema. #9 put it in
+// the schema and broke the cap two ways: on a `kind: agent` executor the schema
+// validates the DISPATCHER's arguments, not the model's answer (the step became
+// unlaunchable), and a required agent report is the discard surface
+// cognitive/cap.implement.build-loop documents — "models WROTE a correct red
+// test but fumbled the sign-off -> verified work thrown away". The revised FILE
+// is the deliverable and it is already verified three ways; losing it over a
+// missing JSON field would trade the thing we want for the note about it.
+
+test("the review transition does NOT gate dispatch on a required schema", () => {
+  const reviewStep = CAP.slice(CAP.indexOf("review: target: verifying"), CAP.indexOf("verifying: goal:"));
+  assert.doesNotMatch(reviewStep, /required: \[/, "a required agent report discards good revisions");
 });
 
-test("an observation must say what was SEEN and how bad it is", () => {
-  assert.match(CAP, /required: \[saw, severity\]/);
-  assert.match(CAP, /enum: \[blocking, notable, minor\]/);
+test("the goal asks for the report shape in the words the model must answer in", () => {
+  assert.match(CAP, /"verdict": "revised" \| "no_change_needed"/);
+  assert.match(CAP, /"observations":/);
+  assert.match(CAP, /"changes":/);
+  assert.match(CAP, /"severity": "blocking" \| "notable" \| "minor"/);
 });
 
-test("a change must carry its reason, not just the edit", () => {
-  assert.match(CAP, /required: \[changed, why\]/);
+// The point of a screenshot is the PICTURE. A report that describes the edit
+// ("adjusted object-fit") tells us nothing we could not read off the diff.
+test("the goal demands observations about the picture, not about the markup", () => {
+  assert.match(CAP, /must describe the PICTURE, not the markup/);
+  assert.match(CAP, /cropped through the child's face/);
 });
 
-// "The page is already good" has to be expressible, or every pass invents work.
-test("no_change_needed is a legitimate verdict", () => {
-  assert.match(CAP, /enum: \[revised, no_change_needed\]/);
+test("no_change_needed is available, and inventing work is refused", () => {
+  assert.match(CAP, /no_change_needed/);
+  assert.match(CAP, /Do not invent work to look diligent/);
 });
 
 test("the revision is gated on asset retention, not only on copy", () => {
