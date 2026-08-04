@@ -1,0 +1,64 @@
+# capabilities/cap.run.serve-preview.yaml
+#
+# Put a URL in the human's hand at the prune gate.
+#
+# The gate exists so a person can JUDGE DESIGNS, and until now it handed them a
+# filesystem path. Two things break when the sheet is opened from disk: browsers
+# restrict what a `file://` document may load into an iframe (so the live
+# candidate previews can come up blank), and candidates that reference local
+# artwork or font files hit the same restriction. Served over loopback, both
+# simply work — and "open http://127.0.0.1:PORT" is a better instruction than a
+# path in any case.
+#
+# NEVER FAILS THE GATE. A preview is a convenience wrapped around the decision,
+# not a precondition for it. `run.serve-preview` reports PREVIEW_UNAVAILABLE
+# rather than erroring, and this cap succeeds either way: the sheet is still on
+# disk and still openable. A pipeline that refused to let a human decide because
+# a convenience server would not start would have its priorities backwards.
+#
+# V6: `run` is Deterministic → primary `kind: script`, legal as the initial-state
+# primary.
+workflows:
+  cap.run.serve-preview:
+    verb: run
+    lifecycle: experimental
+    tags: [design, preview, human-gate]
+    description: >
+      Serve the run's artifacts on loopback (127.0.0.1, OS-chosen port, GET/HEAD
+      only, no traversal) so the human prune gate can hand over a URL instead of a
+      file path — which is also what makes the sheet's live candidate previews and
+      the candidates' own local artwork load. Reuses a live server for the same
+      directory. Degrades to an empty preview_url; never fails the gate it serves.
+    snippet:
+      inputs:
+        # Directory to serve — the run's artifacts dir (holds contact-sheet.html).
+        out_dir: { type: string, required: true }
+        # Optional fixed port; 0 = let the OS choose a free one (the default, so
+        # concurrent runs never collide).
+        port:    { type: integer, default: 0 }
+      outputs:
+        preview_url: { type: string }
+        port:        { type: integer }
+    initialState: serving
+    initialContext:
+      preview_url: ""
+      port:        0
+      reason:      ""
+    states:
+      serving:
+        goal: Serve the run's artifacts on loopback and report the URL.
+        transitions:
+          serve:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: run.serve-preview
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.port"
+            output:
+              preview_url: "$.output.json.preview_url"
+              port:        "$.output.json.port"
+              reason:      "$.output.json.reason"
+      done: { terminal: true }

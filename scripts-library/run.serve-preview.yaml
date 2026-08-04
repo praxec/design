@@ -1,0 +1,139 @@
+# scripts-library/run.serve-preview.yaml
+#
+# Serve the run's artifacts on loopback so the human prune gate can hand over a
+# URL instead of a file path.
+#
+# WHY. The gate's whole purpose is a human judging designs, and two things stood
+# between them and the designs. The sheet embeds each candidate live (see
+# contact-sheet.mjs), and browsers restrict what a `file://` document may pull
+# into an iframe — so opened from disk the sheet can show blank cells. And the
+# candidates now reference local artwork and font files, which have the same
+# problem. Over `http://127.0.0.1` both just work.
+#
+# SCOPE. Loopback only, no authentication, no write path: this serves a
+# directory of generated HTML to the operator who generated it. It is a
+# development preview, never an exposure surface. It binds 127.0.0.1 explicitly
+# (not 0.0.0.0) so nothing is reachable off the machine.
+#
+# LIFETIME. The server must OUTLIVE this step — the human reads the sheet after
+# the workflow parks. So it is spawned detached and recorded in
+# `.preview-server.json` in out_dir. A second call for the same directory REUSES
+# the live server rather than starting a second one; a stale record (process
+# gone) is replaced. `praxec cleanup` is not aware of it: stop it by killing the
+# recorded pid, or let it die with the session.
+#
+#   Args: [out_dir, port?]
+#     out_dir  directory to serve (the run's artifacts)
+#     port     optional fixed port; 0/absent = let the OS choose a free one
+#
+# Emits (ALWAYS exit 0 unless out_dir is missing/absent — a preview is a
+# convenience and must never fail the gate it serves):
+#   { preview_url: "http://127.0.0.1:PORT/", port: N, pid: N, reused: bool }
+#   { preview_url: "", reason: "PREVIEW_UNAVAILABLE", message }
+version: "1.0.0"
+scripts:
+  run.serve-preview:
+    verb: run
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Detached loopback static server for the run's artifacts. No deps.
+      const { existsSync, statSync, readFileSync, writeFileSync } = require("node:fs");
+      const { join, resolve } = require("node:path");
+      const { spawn } = require("node:child_process");
+
+      const outDir = process.argv[2];
+      if (!outDir) {
+        console.error(JSON.stringify({ error: "OUT_DIR_UNSET" }));
+        process.exit(2);
+      }
+      const wanted = Number(process.argv[3] || 0) || 0;
+      const record = join(outDir, ".preview-server.json");
+
+      const unavailable = (message) =>
+        console.log(JSON.stringify({ preview_url: "", reason: "PREVIEW_UNAVAILABLE", message }));
+
+      if (!existsSync(outDir) || !statSync(outDir).isDirectory()) {
+        unavailable(`out_dir does not exist: ${outDir}`);
+        process.exit(0);
+      }
+
+      // Reuse a live server for this directory rather than stacking another.
+      if (existsSync(record)) {
+        try {
+          const prev = JSON.parse(readFileSync(record, "utf8"));
+          process.kill(prev.pid, 0); // throws if the process is gone
+          console.log(JSON.stringify({ ...prev, reused: true }));
+          process.exit(0);
+        } catch {
+          // stale record — fall through and start a fresh one
+        }
+      }
+
+      // The server runs in a detached child so it outlives this step. Loopback
+      // only; GET/HEAD only; path traversal refused; no directory writes.
+      const SERVER = `
+        const http = require("node:http");
+        const { createReadStream, existsSync, statSync } = require("node:fs");
+        const { join, resolve, extname, normalize } = require("node:path");
+        const ROOT = resolve(process.env.PREVIEW_ROOT);
+        const TYPES = { ".html":"text/html; charset=utf-8", ".css":"text/css; charset=utf-8",
+          ".js":"text/javascript; charset=utf-8", ".json":"application/json",
+          ".svg":"image/svg+xml", ".png":"image/png", ".jpg":"image/jpeg", ".jpeg":"image/jpeg",
+          ".webp":"image/webp", ".avif":"image/avif", ".gif":"image/gif",
+          ".woff2":"font/woff2", ".woff":"font/woff", ".ttf":"font/ttf", ".otf":"font/otf" };
+        const srv = http.createServer((req, res) => {
+          if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405).end(); return; }
+          let p = decodeURIComponent((req.url || "/").split("?")[0]);
+          if (p.endsWith("/")) p += "index.html";
+          const abs = resolve(join(ROOT, normalize(p)));
+          if (abs !== ROOT && !abs.startsWith(ROOT + require("node:path").sep)) {
+            res.writeHead(403).end("forbidden"); return;   // traversal
+          }
+          if (!existsSync(abs) || !statSync(abs).isFile()) { res.writeHead(404).end("not found"); return; }
+          res.writeHead(200, { "content-type": TYPES[extname(abs).toLowerCase()] || "application/octet-stream",
+                               "cache-control": "no-store" });
+          if (req.method === "HEAD") { res.end(); return; }
+          createReadStream(abs).pipe(res);
+        });
+        srv.listen(Number(process.env.PREVIEW_PORT) || 0, "127.0.0.1", () => {
+          process.stdout.write(JSON.stringify({ port: srv.address().port }) + "\\n");
+        });
+      `;
+
+      // Root and port travel in the ENVIRONMENT, not in argv: under `node -e`
+      // the first user argument lands at process.argv[1], not [2], and reading
+      // the wrong slot silently served the wrong directory (every request 404).
+      const child = spawn(process.execPath, ["-e", SERVER], {
+        detached: true,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: { ...process.env, PREVIEW_ROOT: resolve(outDir), PREVIEW_PORT: String(wanted) },
+      });
+
+      // The child reports its chosen port on stdout, then we let it go.
+      let buf = "";
+      const done = (port) => {
+        const out = { preview_url: `http://127.0.0.1:${port}/`, port, pid: child.pid, reused: false };
+        try { writeFileSync(record, JSON.stringify(out)); } catch { /* record is a convenience */ }
+        child.unref();
+        console.log(JSON.stringify(out));
+        process.exit(0);
+      };
+      const timer = setTimeout(() => {
+        unavailable("preview server did not report a port within 5s");
+        process.exit(0);
+      }, 5000);
+      child.stdout.on("data", (d) => {
+        buf += d.toString();
+        const nl = buf.indexOf("\n");
+        if (nl < 0) return;
+        clearTimeout(timer);
+        try { done(JSON.parse(buf.slice(0, nl)).port); }
+        catch { unavailable("preview server emitted an unreadable port"); process.exit(0); }
+      });
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        unavailable(`could not spawn preview server: ${err.message}`);
+        process.exit(0);
+      });

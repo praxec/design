@@ -98,9 +98,19 @@ export function buildContactSheet(candidates, outDir) {
         : "";
       const render = hrefFrom(outDir, fullRenderOf(c));
       const thumb = hrefFrom(outDir, thumbOf(c));
-      const thumbImg = thumb
-        ? `<img class="thumb" src="${thumb}" alt="thumbnail of ${esc(id)}" loading="lazy">`
-        : `<div class="thumb thumb--missing">no thumbnail</div>`;
+      // THE PREVIEW IS THE CANDIDATE ITSELF. The thumbnail pipeline emits
+      // `kind: "stub-svg"` placeholders — there is no screenshotter in this
+      // pack — so a sheet built from thumbnails showed the human NO DESIGNS at
+      // the one gate whose entire purpose is judging designs. Embedding the real
+      // render costs nothing (the file is already on disk, beside the sheet) and
+      // is honest: what you prune is what the pipeline produced. The thumbnail
+      // stays as the fallback for a candidate whose render went missing.
+      const thumbImg = render
+        ? `<div class="thumb thumb--live"><iframe class="thumb-frame" src="${render}"
+             title="live preview of ${esc(id)}" loading="lazy" scrolling="no" tabindex="-1"></iframe></div>`
+        : thumb
+          ? `<img class="thumb" src="${thumb}" alt="thumbnail of ${esc(id)}" loading="lazy">`
+          : `<div class="thumb thumb--missing">no preview</div>`;
       const renderLink = render
         ? `<a class="render-link" href="${render}" target="_blank" rel="noopener">Open full render →</a>`
         : `<span class="render-link render-link--missing">render missing</span>`;
@@ -128,6 +138,16 @@ export function buildContactSheet(candidates, outDir) {
 <title>Prune &amp; steer — ${candidates.length} eligible directions</title>
 <style>
   :root { color-scheme: light dark; }
+  /* The live preview renders the candidate at desktop width and scales it,
+     so what the human compares is the composition the design actually has —
+     a reflowed mobile stack would hide the layout being judged. */
+  .thumb--live { position: relative; overflow: hidden; width: 100%; aspect-ratio: 4 / 3;
+                 background: Canvas; border-bottom: 1px solid currentColor; }
+  .thumb-frame { position: absolute; top: 0; left: 0; width: 1440px; height: 1080px;
+                 border: 0; transform: scale(calc(1 / 3)); transform-origin: 0 0;
+                 pointer-events: none; }
+  @media (min-width: 1200px) { .thumb-frame { width: 1600px; height: 1200px;
+                 transform: scale(0.3); } }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.4; }
   header { padding: 1.25rem 1.5rem; border-bottom: 2px solid currentColor; }
