@@ -68,9 +68,11 @@ workflows:
         candidate: { type: object }
     initialState: preparing
     initialContext:
-      renderable: false
-      candidate:  {}
-      reason:     ""
+      renderable:  false
+      candidate:   {}
+      reason:      ""
+      content_ok:  false
+      content_rel: ""
     states:
 
       # V6-legal initial primary (noop): a prep gate so the agent step is not the
@@ -79,9 +81,45 @@ workflows:
         goal: Prepare to generate one candidate for the seed.
         transitions:
           prepare:
-            target: generating
+            target: checking_content
             actor: deterministic
             executor: { kind: noop }
+
+      # PREFLIGHT (D8): resolve content_path against the agent's file host BEFORE
+      # spending a frontier generation on it. The agent cannot distinguish an
+      # unreadable content source from an absent one — its prompt falls back to
+      # representative copy for both — so a stated-but-unreadable source silently
+      # produced an UNGROUNDED candidate that passed every downstream check.
+      # Deterministic code makes that distinction; the agent never gets to.
+      checking_content:
+        goal: Confirm the named content source is actually readable by the agent.
+        transitions:
+          check:
+            target: content_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.content-source
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.content_path"
+            output:
+              content_ok:  "$.output.json.content_ok"
+              content_rel: "$.output.json.content_rel"
+              reason:      "$.output.json.reason"
+
+      content_gate:
+        transitions:
+          ok:
+            target: generating
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.content_ok == true" }
+          unreadable:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.content_ok != true" }
 
       # THE REAL GENERATION STEP. `kind: agent` + design affinity + the pinned
       # skill (in scope at state level → assembled as the system message). The
@@ -129,12 +167,15 @@ workflows:
                 Serve the app's core needs (fit-for-purpose):
                   profile = {{ $.workflow.input.profile }}
 
-                If a content source is named below, it is a file in your working
-                directory holding the page's REAL copy (headings, body, labels,
-                CTAs, in order). READ it with your file-read tool using its
-                RELATIVE path and lay out EXACTLY that copy — do not invent, add,
-                reorder, or drop content; the words are fixed, the DESIGN is
-                yours. If it is empty, use representative content for the app type.
+                If the content source line below is NON-EMPTY, that file has
+                ALREADY BEEN VERIFIED to exist and be readable at that path,
+                relative to your working directory. READ it with your file-read
+                tool and lay out EXACTLY that copy — do not invent, add, reorder,
+                or drop content; the words are fixed, the DESIGN is yours. If you
+                cannot read it, STOP and say so — do NOT substitute content of
+                your own; an ungrounded candidate is worse than no candidate.
+                Only when the line below is EMPTY is there no content source, and
+                only then should you use representative content for the app type.
                   content source: {{ $.workflow.input.content_path }}
 
                 Be distinctive — do NOT emit the generic default (Inter + dark

@@ -1,0 +1,89 @@
+# scripts-library/verify.content-source.yaml
+#
+# The content-grounding PREFLIGHT for design/cap.implement.generate-direction.
+#
+# WHY THIS EXISTS. `content_path` names the file holding the target page's REAL
+# copy, so every candidate lays out the SAME words and the DESIGN is the only
+# variable. The generation agent's only file host is rooted at `out_dir`, so a
+# path outside that root is unreadable — and the prompt's own fallback clause
+# ("if it is empty, use representative content") gives the agent no way to tell
+# UNREADABLE from EMPTY. Observed consequence: the agent invented its own copy,
+# reported `"Content source file not present in working directory; used
+# representative family-chronicle copy"` in a free-text field nothing gates on,
+# and the candidate passed every downstream check as a legitimate direction.
+# The whole point of content-grounding was silently lost while the run went green.
+#
+# This is the same discipline the pack already applies to WRITES: the agent's
+# claim is not trusted, a deterministic step re-opens the file, and a
+# described-but-unwritten candidate fails loudly. A described-but-UNREAD content
+# source deserves the same treatment — the human must never be handed an
+# ungrounded candidate that looks grounded.
+#
+#   Args: [out_dir, content_path]
+#     out_dir       the agent's file-host root (absolute)
+#     content_path  "" = no content source (legitimate; representative copy)
+#                   otherwise a path RELATIVE to out_dir, or an absolute path
+#                   that resolves INSIDE out_dir
+#
+# Emits (ALWAYS exit 0 — the cap's content_gate routes on `content_ok`):
+#   { content_ok: true,  content_rel: "copy.md", reason: "" }
+#   { content_ok: false, content_rel: "",        reason: "CONTENT_UNREADABLE", message }
+# Only a missing out_dir is a hard error (exit 2).
+version: "1.0.0"
+scripts:
+  verify.content-source:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic content-source preflight. No LLM, no network.
+      const { existsSync, statSync, readFileSync } = require("node:fs");
+      const { isAbsolute, resolve, relative, join } = require("node:path");
+
+      const outDir = process.argv[2];
+      if (!outDir) {
+        console.error(JSON.stringify({ error: "OUT_DIR_UNSET" }));
+        process.exit(2);
+      }
+      const raw = (process.argv[3] || "").trim();
+
+      const ok = (rel) =>
+        console.log(JSON.stringify({ content_ok: true, content_rel: rel, reason: "" }));
+      const fail = (message) =>
+        console.log(JSON.stringify({
+          content_ok: false,
+          content_rel: "",
+          reason: "CONTENT_UNREADABLE",
+          message,
+        }));
+
+      // No content source named is a LEGITIMATE configuration — the agent uses
+      // representative copy for the app type. Only a NAMED-but-unusable source
+      // is a failure; that is the distinction the agent could not make.
+      if (raw === "") { ok(""); process.exit(0); }
+
+      // Resolve relative to the agent's file-host root, and refuse anything that
+      // escapes it — the agent literally cannot read outside that root, so an
+      // outside path is unreadable no matter that it exists on this machine.
+      const abs = isAbsolute(raw) ? resolve(raw) : resolve(outDir, raw);
+      const rel = relative(resolve(outDir), abs);
+      if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+        fail(
+          `content_path ${JSON.stringify(raw)} resolves to ${abs}, which is outside the ` +
+          `generation agent's file host (rooted at ${outDir}). The agent cannot read it. ` +
+          `Place the copy inside out_dir and pass a path relative to it.`,
+        );
+        process.exit(0);
+      }
+      if (!existsSync(abs) || !statSync(abs).isFile()) {
+        fail(`content_path ${JSON.stringify(raw)} does not exist at ${abs}.`);
+        process.exit(0);
+      }
+      // An empty file is not grounding — it would silently degrade to invented
+      // copy exactly like a missing one.
+      if (readFileSync(abs, "utf8").trim() === "") {
+        fail(`content_path ${JSON.stringify(raw)} is empty at ${abs}; it grounds nothing.`);
+        process.exit(0);
+      }
+      ok(rel);

@@ -160,8 +160,34 @@ test("set-seeds folds the valenced steer into notes as 'axis→toward'", () => {
   const seeds = setSeeds([{ corners: "square" }], {}, steer);
   assert.equal(
     seeds[0].notes,
-    "amplify: layout→clear headline at top, type; avoid: color→upscale not orange, feel→premium",
+    "amplify: layout→clear headline at top, type; " +
+      "on color, go toward: upscale not orange; on feel, go toward: premium",
   );
+});
+
+// THE VALENCE CONTRACT. A dislike's `toward` is the REDIRECT TARGET — where the
+// human wants the next divergence to GO. It must never reach the generation
+// prompt behind a prohibition word, because that inverts the human's intent:
+// a human asking to move toward a storybook palette previously produced
+// "avoid: color→storybook palette", instructing the model to shun it.
+test("set-seeds: a redirect target is never rendered as something to avoid", () => {
+  const seeds = setSeeds([{ corners: "square" }], {}, {
+    amplify: [],
+    avoid: [{ axis: "color", toward: "storybook palette — forest green, lantern gold" }],
+  });
+  assert.match(seeds[0].notes, /go toward: storybook palette/);
+  assert.doesNotMatch(seeds[0].notes, /avoid[^]*storybook palette/);
+});
+
+// An axis with NO direction given is the one true avoid: the human named the
+// axis they disliked but not where to go, so there is nothing to steer toward.
+test("set-seeds: an axis-only dislike still renders as a plain avoid", () => {
+  const seeds = setSeeds([{ corners: "square" }], {}, {
+    amplify: [],
+    avoid: [{ axis: "motion", toward: "" }],
+  });
+  assert.match(seeds[0].notes, /avoid motion/);
+  assert.doesNotMatch(seeds[0].notes, /go toward/);
 });
 
 test("set-seeds: empty toward renders the bare axis (no arrow)", () => {
@@ -169,7 +195,7 @@ test("set-seeds: empty toward renders the bare axis (no arrow)", () => {
     amplify: [{ axis: "type", toward: "" }],
     avoid: [],
   });
-  assert.match(seeds[0].notes, /amplify: type;/);
+  assert.match(seeds[0].notes, /amplify: type/);
   assert.doesNotMatch(seeds[0].notes, /type→/);
 });
 
