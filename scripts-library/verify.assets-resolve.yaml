@@ -1,0 +1,118 @@
+# scripts-library/verify.assets-resolve.yaml
+#
+# Make the two asset rules DETERMINISTIC instead of merely instructed.
+#
+# Allowing local assets (#4) traded one failure mode for two, and the pack could
+# detect neither:
+#
+#   1. A REFERENCE TO A FILE THAT IS NOT THERE. Observed live: the operator's
+#      brief named the artwork but a copy/paste slip dropped the filename list,
+#      so the generator invented plausible names from the story titles —
+#      `art/dragon-under-stairs.png`, `art/gran-1953.png` — and wrote eight
+#      <img> tags pointing at nothing. The candidate parsed as HTML, passed
+#      verify.candidate-renderable, scored, and was carried toward the human as
+#      a legitimate direction. Four generations were spent before anyone noticed,
+#      and only because a human looked at the pixels.
+#
+#   2. A NETWORK REFERENCE. "Renders with the network unplugged" is stated in
+#      both prompt layers and checked by nothing. A CDN stylesheet or a Google
+#      Fonts link would render beautifully on the machine that made it and
+#      degrade silently anywhere else — including in the headless screenshotter.
+#
+# Both are the pack's own discipline applied to the newest surface: the agent's
+# claim is not trusted, deterministic code re-opens the artifact, and a
+# described-but-absent thing is a failure rather than a shrug.
+#
+# WHAT IS SCANNED: src / srcset / href / poster on any element, CSS url(...) in
+# both inline <style> and style="" attributes, and SVG <image href>. Ignored,
+# because they are not file references: data: URIs, fragment-only (#x),
+# mailto:/tel:, and empty values.
+#
+#   Args: [artifact_path]
+#
+# Emits (ALWAYS exit 0 — routing belongs to the caller's gate):
+#   { assets_ok: true,  checked: N, missing: [], network: [], reason: "" }
+#   { assets_ok: false, checked: N, missing: [...], network: [...],
+#     reason: "BROKEN_ASSET_REFERENCE" | "NETWORK_ASSET_REFERENCE" }
+# Only an unreadable artifact is a hard error (exit 2).
+version: "1.0.0"
+scripts:
+  verify.assets-resolve:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic asset-reference check. No LLM, no network — it never
+      // FETCHES anything; a network reference is a failure, not a request.
+      const { existsSync, statSync, readFileSync } = require("node:fs");
+      const { dirname, resolve, join } = require("node:path");
+
+      const artifact = process.argv[2];
+      if (!artifact || !existsSync(artifact)) {
+        console.error(JSON.stringify({ error: "ARTIFACT_MISSING", path: artifact || "" }));
+        process.exit(2);
+      }
+      const html = readFileSync(artifact, "utf8");
+      const base = dirname(resolve(artifact));
+
+      const refs = new Set();
+      const add = (v) => {
+        const s = String(v || "").trim();
+        if (s) refs.add(s);
+      };
+
+      // Attribute references. srcset carries a comma-separated candidate list
+      // with descriptors ("a.png 2x"), so split it before taking the URL half.
+      for (const m of html.matchAll(/\b(?:src|href|poster)\s*=\s*["']([^"']+)["']/gi)) add(m[1]);
+      for (const m of html.matchAll(/\bsrcset\s*=\s*["']([^"']+)["']/gi)) {
+        for (const part of m[1].split(",")) add(part.trim().split(/\s+/)[0]);
+      }
+      // CSS url(...) — inline <style> blocks and style="" attributes alike.
+      for (const m of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) add(m[1]);
+
+      const missing = [];
+      const network = [];
+      let checked = 0;
+
+      for (const ref of refs) {
+        // Not file references at all.
+        if (/^data:/i.test(ref)) continue;
+        if (/^(?:mailto|tel|javascript):/i.test(ref)) continue;
+        if (ref.startsWith("#")) continue;
+
+        // A network reference: absolute URL or protocol-relative. The page must
+        // render with the network unplugged, so this is a failure on sight —
+        // never something to go and check.
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(ref) || ref.startsWith("//")) {
+          network.push(ref);
+          continue;
+        }
+
+        checked++;
+        // Strip any query/fragment before touching the filesystem.
+        const clean = ref.split("#")[0].split("?")[0];
+        if (!clean) continue;
+        // A root-relative path has no meaning for a self-contained candidate —
+        // there is no document root to resolve it against.
+        const abs = clean.startsWith("/") ? clean : resolve(join(base, clean));
+        if (!existsSync(abs) || !statSync(abs).isFile()) missing.push(ref);
+      }
+
+      if (missing.length === 0 && network.length === 0) {
+        console.log(JSON.stringify({ assets_ok: true, checked, missing: [], network: [], reason: "" }));
+        process.exit(0);
+      }
+      console.log(JSON.stringify({
+        assets_ok: false,
+        checked,
+        // Bounded so a pathological artifact cannot flood the run context; the
+        // counts stay exact.
+        missing: missing.slice(0, 25),
+        network: network.slice(0, 25),
+        missing_count: missing.length,
+        network_count: network.length,
+        // Network is reported first when both are present: it is the stricter
+        // rule and the one that fails on someone else's machine rather than here.
+        reason: network.length ? "NETWORK_ASSET_REFERENCE" : "BROKEN_ASSET_REFERENCE",
+      }));

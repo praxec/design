@@ -68,6 +68,7 @@ workflows:
         candidate: { type: object }
     initialState: preparing
     initialContext:
+      assets_ok:   false
       renderable:  false
       candidate:   {}
       reason:      ""
@@ -232,7 +233,7 @@ workflows:
       verify_gate:
         transitions:
           ok:
-            target: done
+            target: checking_assets
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.renderable == true" }
@@ -241,6 +242,40 @@ workflows:
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.renderable != true" }
+
+      # ASSET REFERENCES (#4 made local assets legal; nothing checked them).
+      # A candidate that references files which are not there renders as a page
+      # full of broken-image icons while parsing perfectly — observed live, and
+      # carried four generations toward a human before anyone noticed. A network
+      # reference is the same class: it renders here and fails everywhere else,
+      # including in the headless screenshotter.
+      checking_assets:
+        goal: Confirm every referenced asset is a local file that exists.
+        transitions:
+          check:
+            target: assets_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.assets-resolve
+              args:
+                - "{{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html"
+            output:
+              assets_ok: "$.output.json.assets_ok"
+              reason:    "$.output.json.reason"
+
+      assets_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.assets_ok == true" }
+          broken:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.assets_ok != true" }
 
       done:
         terminal: true
