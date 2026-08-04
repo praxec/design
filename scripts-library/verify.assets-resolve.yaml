@@ -28,12 +28,28 @@
 # because they are not file references: data: URIs, fragment-only (#x),
 # mailto:/tel:, and empty values.
 #
-#   Args: [artifact_path]
+#   Args: [artifact_path, baseline_path?]
+#
+# RETENTION (the optional second argument). After a revision pass, "every
+# reference resolves" is satisfied by a page with NO images at all — and that is
+# not hypothetical. A visual reviewer shown a page of broken-image icons deleted
+# all eight of them, passed every gate, and was recorded as a successful
+# revision. The copy guard permitted it correctly (an image reference is not
+# copy), and the result was a page with no artwork on a product whose premise is
+# that the artwork IS the design system.
+#
+# So when a baseline is given, a candidate that HAD resolvable local imagery and
+# now has NONE is REVISION_STRIPPED_ASSETS. The rule is deliberately narrow:
+# going from five plates to four is a design judgement and none of a validator's
+# business; going to zero has removed the subject. A broad "must not use fewer
+# assets" rule would misfire on every legitimate consolidation, and a rule that
+# misfires gets turned off.
 #
 # Emits (ALWAYS exit 0 — routing belongs to the caller's gate):
 #   { assets_ok: true,  checked: N, missing: [], network: [], reason: "" }
 #   { assets_ok: false, checked: N, missing: [...], network: [...],
-#     reason: "BROKEN_ASSET_REFERENCE" | "NETWORK_ASSET_REFERENCE" }
+#     reason: "BROKEN_ASSET_REFERENCE" | "NETWORK_ASSET_REFERENCE"
+#           | "REVISION_STRIPPED_ASSETS" }
 # Only an unreadable artifact is a hard error (exit 2).
 version: "1.0.0"
 scripts:
@@ -53,23 +69,44 @@ scripts:
         console.error(JSON.stringify({ error: "ARTIFACT_MISSING", path: artifact || "" }));
         process.exit(2);
       }
-      const html = readFileSync(artifact, "utf8");
-      const base = dirname(resolve(artifact));
-
-      const refs = new Set();
-      const add = (v) => {
-        const s = String(v || "").trim();
-        if (s) refs.add(s);
-      };
-
-      // Attribute references. srcset carries a comma-separated candidate list
-      // with descriptors ("a.png 2x"), so split it before taking the URL half.
-      for (const m of html.matchAll(/\b(?:src|href|poster)\s*=\s*["']([^"']+)["']/gi)) add(m[1]);
-      for (const m of html.matchAll(/\bsrcset\s*=\s*["']([^"']+)["']/gi)) {
-        for (const part of m[1].split(",")) add(part.trim().split(/\s+/)[0]);
+      // ONE extractor, used for the artifact and for any baseline: a retention
+      // check built on a second, slightly different parser would be a bug
+      // generator rather than a guard.
+      function referencesOf(file) {
+        const html = readFileSync(file, "utf8");
+        const refs = new Set();
+        const add = (v) => {
+          const s = String(v || "").trim();
+          if (s) refs.add(s);
+        };
+        // Attribute references. srcset carries a comma-separated candidate list
+        // with descriptors ("a.png 2x"), so split it before taking the URL half.
+        for (const m of html.matchAll(/\b(?:src|href|poster)\s*=\s*["']([^"']+)["']/gi)) add(m[1]);
+        for (const m of html.matchAll(/\bsrcset\s*=\s*["']([^"']+)["']/gi)) {
+          for (const part of m[1].split(",")) add(part.trim().split(/\s+/)[0]);
+        }
+        // CSS url(...) — inline <style> blocks and style="" attributes alike.
+        for (const m of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) add(m[1]);
+        return refs;
       }
-      // CSS url(...) — inline <style> blocks and style="" attributes alike.
-      for (const m of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) add(m[1]);
+
+      // How many referenced LOCAL files actually resolve, relative to `dir`.
+      function resolvableCount(refs, dir) {
+        let n = 0;
+        for (const ref of refs) {
+          if (/^data:/i.test(ref) || /^(?:mailto|tel|javascript):/i.test(ref)) continue;
+          if (ref.startsWith("#")) continue;
+          if (/^[a-z][a-z0-9+.-]*:\/\//i.test(ref) || ref.startsWith("//")) continue;
+          const clean = ref.split("#")[0].split("?")[0];
+          if (!clean || clean.startsWith("/")) continue;
+          const abs = resolve(join(dir, clean));
+          if (existsSync(abs) && statSync(abs).isFile()) n++;
+        }
+        return n;
+      }
+
+      const base = dirname(resolve(artifact));
+      const refs = referencesOf(artifact);
 
       const missing = [];
       const network = [];
@@ -97,6 +134,25 @@ scripts:
         // there is no document root to resolve it against.
         const abs = clean.startsWith("/") ? clean : resolve(join(base, clean));
         if (!existsSync(abs) || !statSync(abs).isFile()) missing.push(ref);
+      }
+
+      // RETENTION. Checked only once the references that ARE present have been
+      // found sound — a broken page is already failing for a better reason.
+      const baseline = process.argv[3];
+      if (missing.length === 0 && network.length === 0 && baseline) {
+        if (!existsSync(baseline)) {
+          console.error(JSON.stringify({ error: "BASELINE_MISSING", path: baseline }));
+          process.exit(2);
+        }
+        const had = resolvableCount(referencesOf(baseline), dirname(resolve(baseline)));
+        const has = resolvableCount(refs, base);
+        if (had > 0 && has === 0) {
+          console.log(JSON.stringify({
+            assets_ok: false, checked, missing: [], network: [],
+            reason: "REVISION_STRIPPED_ASSETS", had_assets: had, has_assets: has,
+          }));
+          process.exit(0);
+        }
       }
 
       if (missing.length === 0 && network.length === 0) {

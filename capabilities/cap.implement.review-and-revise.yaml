@@ -70,6 +70,7 @@ workflows:
     initialState: preparing
     initialContext:
       revised:        false
+      assets_ok:      false
       copy_preserved: false
       renderable:     false
       snapshot:       ""
@@ -175,6 +176,41 @@ workflows:
                 "no change needed" is a legitimate, useful outcome.
 
                   design brief: {{ $.workflow.input.content_path }}
+            # THE REPORT IS THE PRODUCT OF THIS PASS. Without a schema the model
+            # answered `{summary: "Saw the rendered page, found gaps, rewrote
+            # candidate-v3.html", details: "See internal monologue."}` — a
+            # successful review that told the human nothing. What a screenshot
+            # buys is the OBSERVATION ("the plate is cropped through the child's
+            # face", "the setup list is unreadable at 320px"); nothing else in
+            # the pipeline can produce it, so it is required, not requested.
+            inputSchema:
+              type: object
+              required: [observations, changes, verdict]
+              properties:
+                verdict:
+                  type: string
+                  enum: [revised, no_change_needed]
+                observations:
+                  type: array
+                  default: []
+                  items:
+                    type: object
+                    required: [saw, severity]
+                    properties:
+                      # What was ON SCREEN — not what the markup intended.
+                      saw:      { type: string }
+                      severity: { type: string, enum: [blocking, notable, minor] }
+                      # Where: "full width", "320px", "dark mode".
+                      where:    { type: string }
+                changes:
+                  type: array
+                  default: []
+                  items:
+                    type: object
+                    required: [changed, why]
+                    properties:
+                      changed: { type: string }
+                      why:     { type: string }
             output:
               review_report: "$.output"
 
@@ -231,18 +267,51 @@ workflows:
       copy_gate:
         transitions:
           preserved:
-            target: done
+            target: checking_assets
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.copy_preserved == true" }
-            output:
-              revised: true
           altered:
             target: restoring
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.copy_preserved != true" }
 
+      # THE SECOND GUARD. The copy check correctly permits removing an image —
+      # a `src` is not copy — so a reviewer shown broken-image icons deleted all
+      # eight of them and passed every gate as a successful revision. Passing the
+      # snapshot as the baseline turns "every reference resolves" into "and you
+      # did not resolve them by deleting the artwork".
+      checking_assets:
+        goal: Confirm the revision did not strip the page's imagery.
+        transitions:
+          check:
+            target: assets_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.assets-resolve
+              args:
+                - "$.context.candidate"
+                - "$.context.snapshot"
+            output:
+              assets_ok: "$.output.json.assets_ok"
+              reason:    "$.output.json.reason"
+
+      assets_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.assets_ok == true" }
+            output:
+              revised: true
+          stripped:
+            target: restoring
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.assets_ok != true" }
       # A bad revision must never cost the human a candidate they might have
       # chosen. Put the pre-review file back and report why.
       restoring:

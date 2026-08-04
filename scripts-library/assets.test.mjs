@@ -158,3 +158,84 @@ test("an unreadable artifact is a hard error, not a silent pass", () => {
     execFileSync("node", [CHECK, join(tmpdir(), "no-such-candidate.html")], { encoding: "utf8", stdio: "pipe" }),
   );
 });
+
+// ---------------------------------------------------------------------------
+// RETENTION — the second argument. Added after a visual reviewer, shown a page
+// of broken-image icons, deleted all eight of them and passed every gate as a
+// successful revision. "Every reference resolves" is trivially satisfied by a
+// page with no references at all.
+// ---------------------------------------------------------------------------
+
+// Build a before/after pair in ONE directory, so both resolve against the same
+// art/ folder exactly as a candidate and its pre-review snapshot do.
+function checkRetention(beforeHtml, afterHtml, { assets = ["art/plate-one.png"] } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "as-ret-"));
+  for (const a of assets) {
+    mkdirSync(join(dir, dirname(a)), { recursive: true });
+    writeFileSync(join(dir, a), "PNGDATA");
+  }
+  const before = join(dir, "candidate-c1.pre-review.html");
+  const after = join(dir, "candidate-c1.html");
+  writeFileSync(before, `<!doctype html><html><body>${beforeHtml}</body></html>`);
+  writeFileSync(after, `<!doctype html><html><body>${afterHtml}</body></html>`);
+  return JSON.parse(execFileSync("node", [CHECK, after, before], { encoding: "utf8" }));
+}
+
+test("a revision that deletes ALL imagery is REVISION_STRIPPED_ASSETS", () => {
+  const out = checkRetention(
+    `<img src="art/plate-one.png"><img src="art/plate-two.png">`,
+    `<section><h1>Hello, Rosa</h1></section>`,
+    { assets: ["art/plate-one.png", "art/plate-two.png"] },
+  );
+  assert.equal(out.assets_ok, false);
+  assert.equal(out.reason, "REVISION_STRIPPED_ASSETS");
+  assert.equal(out.had_assets, 2);
+  assert.equal(out.has_assets, 0);
+});
+
+// Deliberately narrow. Consolidating five plates into four is a design
+// judgement and none of a validator's business; a rule that misfires on
+// legitimate work gets turned off.
+test("using FEWER images is a design judgement, not a violation", () => {
+  const out = checkRetention(
+    `<img src="art/plate-one.png"><img src="art/plate-two.png">`,
+    `<img src="art/plate-one.png">`,
+    { assets: ["art/plate-one.png", "art/plate-two.png"] },
+  );
+  assert.equal(out.assets_ok, true);
+});
+
+test("swapping which plate is used is fine", () => {
+  const out = checkRetention(
+    `<img src="art/plate-one.png">`,
+    `<img src="art/plate-two.png">`,
+    { assets: ["art/plate-one.png", "art/plate-two.png"] },
+  );
+  assert.equal(out.assets_ok, true);
+});
+
+test("a page that never had imagery is not forced to acquire some", () => {
+  const out = checkRetention(`<h1>words only</h1>`, `<h1>words only, restyled</h1>`);
+  assert.equal(out.assets_ok, true);
+});
+
+test("moving artwork from <img> into a CSS background still counts as retained", () => {
+  const out = checkRetention(
+    `<img src="art/plate-one.png">`,
+    `<div style="background-image:url('art/plate-one.png')"></div>`,
+  );
+  assert.equal(out.assets_ok, true);
+});
+
+// A broken page is already failing for a better reason; retention must not
+// mask BROKEN_ASSET_REFERENCE.
+test("a broken reference still reports as broken, not as stripped", () => {
+  const out = checkRetention(`<img src="art/plate-one.png">`, `<img src="art/invented.png">`);
+  assert.equal(out.assets_ok, false);
+  assert.equal(out.reason, "BROKEN_ASSET_REFERENCE");
+});
+
+test("with no baseline argument, retention is not checked at all", () => {
+  const out = check(`<h1>no images here</h1>`);
+  assert.equal(out.assets_ok, true, "single-argument behaviour is unchanged");
+});
