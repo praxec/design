@@ -1,0 +1,269 @@
+# capabilities/cap.implement.review-and-revise.yaml
+#
+# ==================== LET THE GENERATOR SEE ITS OWN WORK ====================
+# Every candidate this pack has produced was made BLIND. The generator writes
+# HTML, the file is scored by a CSS parser, and a human is shown the result —
+# but the model that designed it never once looked at what it rendered. No
+# designer works that way, and it shows: pages that read well as markup and
+# poorly as pictures, hierarchy that exists in the stylesheet and not on screen.
+#
+# This cap closes that loop. It leases the `browser` pool (the reference
+# connections in cognitive-architectures — browser-playwright or
+# browser-chrome-devtools — which an operator copies into their gateway and
+# GRANTS), navigates to the candidate as SERVED (design/cap.run.serve-preview),
+# takes a screenshot, and revises the file against what it actually sees.
+#
+# WHY THE SERVED URL AND NOT file://. Candidates reference local artwork and
+# font files, and a `file://` document is restricted in what it may load. A
+# reviewer looking at a page whose images silently failed would "fix" problems
+# that do not exist. It must see what the human will see.
+#
+# THE GUARD (rule: a later stage may not silently repair an earlier one).
+# A model rewriting its own file is precisely where fabrication enters: asked to
+# improve a design, it is one step from improving the WORDS — tightening a
+# heading, adding a caption the layout seems to want. That would silently change
+# the experiment, because the content source is the one thing held constant so
+# that DESIGN is the only variable between candidates. So the revision is bounded
+# DETERMINISTICALLY, not by instruction: run.snapshot-candidate copies the file
+# aside first, and verify.copy-preserved requires the visible-text multiset to be
+# unchanged afterwards. Reordering and restyling are free; adding, dropping or
+# rewording is REVISION_ALTERED_COPY and the pre-review file is restored.
+#
+# BOUNDED. Exactly ONE review pass. A self-critique loop that runs until the
+# model is satisfied is a loop with no fixed point — the model always finds
+# something. One pass, then the human decides; that is what the prune gate is for.
+#
+# V6: `implement` is Cognitive, and `kind: agent` is not a legal initial-state
+# primary, so the initial state is a `noop` prep gate and the agent step lives
+# downstream — the same shape as cap.implement.generate-direction.
+workflows:
+  cap.implement.review-and-revise:
+    verb: implement
+    lifecycle: experimental
+    tags: [design, review, visual, browser]
+    # V31 lease: the browser is exclusive and pooled, so parallel reviews queue
+    # for it rather than fighting over one Chromium.
+    exclusive_pools: [browser]
+    description: >
+      Let the generator SEE its own candidate: open it in the leased browser at
+      the served URL, screenshot it, and revise the file against what is actually
+      on screen. Exactly one pass. Deterministically bounded — the visible copy
+      must survive unchanged (REVISION_ALTERED_COPY restores the pre-review file),
+      and the revised file must still parse (CANDIDATE_NOT_RENDERABLE).
+    snippet:
+      inputs:
+        # The run's artifacts dir (holds the candidate and its artwork).
+        out_dir:      { type: string, required: true }
+        # Stable candidate id — the artifact is candidate-<id>.html.
+        candidate_id: { type: string, required: true }
+        # Base URL the artifacts are served on (design/cap.run.serve-preview).
+        # Empty ⇒ NO_PREVIEW_URL: refuse rather than review a file:// page whose
+        # images may have silently failed to load.
+        preview_url:  { type: string, default: "" }
+        # The design brief the candidate was generated against, so the review
+        # judges against the SAME intent rather than the model's taste of the day.
+        content_path: { type: string, default: "" }
+      outputs:
+        revised:       { type: boolean }
+        review_report: { type: object }
+        reason:        { type: string }
+    initialState: preparing
+    initialContext:
+      revised:        false
+      copy_preserved: false
+      renderable:     false
+      snapshot:       ""
+      candidate:      ""
+      review_report:  {}
+      reason:         ""
+    states:
+
+      # V6-legal initial primary. Also the fail-fast on a missing preview URL:
+      # reviewing a file:// page would mean judging one whose artwork may not
+      # have loaded, and "the images are missing" is the first thing a reviewer
+      # would try to fix.
+      preparing:
+        goal: Confirm the candidate can be reviewed as the human will see it.
+        transitions:
+          ready:
+            target: snapshotting
+            actor: deterministic
+            executor: { kind: noop }
+            guards:
+              - { kind: expr, expr: "$.workflow.input.preview_url != ''" }
+          no_preview:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            guards:
+              - { kind: expr, expr: "$.workflow.input.preview_url == ''" }
+            output:
+              reason: "NO_PREVIEW_URL"
+
+      # The rollback point. Taken BEFORE the reviewer can touch anything.
+      snapshotting:
+        goal: Copy the candidate aside so the revision can be checked and undone.
+        transitions:
+          snapshot:
+            target: reviewing
+            actor: deterministic
+            executor:
+              kind: script
+              subject: run.snapshot-candidate
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.candidate_id"
+            output:
+              snapshot:  "$.output.json.snapshot"
+              candidate: "$.output.json.candidate"
+
+      reviewing:
+        skills: [implement.design-direction]
+        goal: Look at the rendered candidate and improve the DESIGN only.
+        transitions:
+          review:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: design
+              max_seconds: 2700
+              # The leased browser (to SEE) plus the file host rooted at out_dir
+              # (to READ the brief and REWRITE the candidate).
+              tools:
+                - "{{ $.run.leased.browser }}"
+                - "file:{{ $.workflow.input.out_dir }}"
+              owned_files:
+                - "{{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html"
+              goal: >
+                You previously wrote this page without ever seeing it. Look at it
+                now, then improve it.
+
+                1. Open it in the browser at EXACTLY this URL:
+
+                     {{ $.workflow.input.preview_url }}candidate-{{ $.workflow.input.candidate_id }}.html
+
+                   Take a screenshot. Look at the whole page, then at a narrow
+                   viewport, then in dark mode if the page supports it.
+
+                2. Judge what you SEE, not what you intended. Be specific and
+                   concrete. Typical gaps between markup and picture: type that
+                   is too small or too tightly tracked to read; hierarchy that
+                   exists in the stylesheet but not on screen; images cropped
+                   badly by object-fit; elements colliding or overflowing; a
+                   layout that collapses at narrow width; contrast that fails
+                   against real artwork rather than against a flat swatch.
+
+                3. Re-read the design brief (the content source named below) and
+                   ask whether the rendered page actually delivers its INTENT —
+                   not whether you followed its wording.
+
+                4. Rewrite the candidate file to fix what you found. Then look
+                   again to confirm you fixed it and broke nothing.
+
+                THE ONE HARD RULE: **do not change a single word of the visible
+                copy.** Not a heading, not a label, not a caption. No additions,
+                no deletions, no rewording, no "clearer" phrasing. The words are
+                fixed so that DESIGN is the only variable between candidates; a
+                revision that edits them changes the experiment rather than the
+                design, and a deterministic check will detect it and DISCARD your
+                revision entirely. Moving text elsewhere in the layout is fine —
+                that is design. Changing it is not.
+
+                Report what you saw and what you changed. If the page is already
+                good and you would only be fiddling, say so and change nothing —
+                "no change needed" is a legitimate, useful outcome.
+
+                  design brief: {{ $.workflow.input.content_path }}
+            output:
+              review_report: "$.output"
+
+      # The agent's claim is not trusted (coding-write-evidence): the file must
+      # still be there and still parse.
+      verifying:
+        goal: Confirm the revised candidate is still a renderable HTML file.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.candidate-renderable
+              args:
+                - "$.workflow.input.out_dir"
+                - "{}"
+                - "$.workflow.input.candidate_id"
+            output:
+              renderable: "$.output.json.renderable"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: checking_copy
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.renderable == true" }
+          not_renderable:
+            target: restoring
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.renderable != true" }
+            output:
+              reason: "CANDIDATE_NOT_RENDERABLE"
+
+      # THE GUARD. Design may change; the words may not.
+      checking_copy:
+        goal: Confirm the revision changed the design and not the copy.
+        transitions:
+          check:
+            target: copy_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.copy-preserved
+              args:
+                - "$.context.snapshot"
+                - "$.context.candidate"
+            output:
+              copy_preserved: "$.output.json.copy_preserved"
+              reason:         "$.output.json.reason"
+
+      copy_gate:
+        transitions:
+          preserved:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.copy_preserved == true" }
+            output:
+              revised: true
+          altered:
+            target: restoring
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.copy_preserved != true" }
+
+      # A bad revision must never cost the human a candidate they might have
+      # chosen. Put the pre-review file back and report why.
+      restoring:
+        goal: Restore the pre-review candidate; the revision is discarded.
+        transitions:
+          restore:
+            target: failed
+            actor: deterministic
+            executor:
+              kind: script
+              subject: run.restore-candidate
+              args:
+                - "$.context.snapshot"
+                - "$.context.candidate"
+
+      done:
+        terminal: true
+        outcome: success
+
+      # A failed review is NOT a failed candidate: the original is intact on
+      # disk and still eligible. The failure says the REVIEW did not land.
+      failed:
+        terminal: true
+        outcome: failure

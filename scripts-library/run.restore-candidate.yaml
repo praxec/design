@@ -1,0 +1,43 @@
+# scripts-library/run.restore-candidate.yaml
+#
+# Put the pre-review candidate back after a rejected revision.
+#
+# A failed review must never cost the human a candidate. The reviewer either
+# broke the file (CANDIDATE_NOT_RENDERABLE) or edited the copy
+# (REVISION_ALTERED_COPY); in both cases the pre-review snapshot is the truth
+# and the revision is discarded wholesale. Partial salvage is not attempted —
+# "some of the revision" is not a state anyone reasoned about.
+#
+#   Args: [snapshot_path, candidate_path]
+#
+# Emits (ALWAYS exit 0 — this runs on a path that is ALREADY a failure, and a
+# restore that itself threw would turn a discarded revision into a lost
+# candidate):
+#   { restored: true }
+#   { restored: false, message } — the candidate on disk is whatever the
+#                                  reviewer left; the snapshot is still beside it.
+version: "1.0.0"
+scripts:
+  run.restore-candidate:
+    verb: run
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      const { existsSync, copyFileSync } = require("node:fs");
+
+      const snapshot = process.argv[2];
+      const candidate = process.argv[3];
+      const fail = (message) => {
+        console.log(JSON.stringify({ restored: false, message }));
+        process.exit(0);
+      };
+
+      if (!snapshot || !candidate) fail("restore paths unset");
+      if (!existsSync(snapshot)) fail(`no snapshot to restore from: ${snapshot}`);
+      try {
+        copyFileSync(snapshot, candidate);
+      } catch (err) {
+        fail(`could not restore: ${String(err.message)}`);
+      }
+      console.log(JSON.stringify({ restored: true }));
