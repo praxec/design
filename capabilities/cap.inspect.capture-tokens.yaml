@@ -1,0 +1,56 @@
+# capabilities/cap.inspect.capture-tokens.yaml
+#
+# Spec §4b (Increment IV-a) — the CAPTURE half of the rollout's anti-regression
+# heart. Parses an approved design-system markdown into the canonical, machine-
+# checkable TOKEN CONTRACT ({ colors[], fonts[], scale[] }) that the per-surface
+# token-adherence gate enforces. Mirrors cap.inspect.score-axes / cap.inspect.
+# contact-sheet EXACTLY (the CAP-WRAPS-SCRIPT-SKILL pattern): verb `inspect` (the
+# blessed deterministic introspection verb — reads a source doc, writes ONE
+# read-only structured artifact), a single `kind: script` leaf wrapping the tested
+# core (capture-tokens.mjs, single source of truth) via the `inspect.capture-
+# tokens` script-skill.
+#
+# Because the engine exposes no pack-directory scope, `scripts_dir` (the absolute
+# path to this pack's scripts-library/, holding capture-tokens.mjs) is threaded in
+# as an input the orchestrator/operator supplies — same seam as score-axes.
+#
+# V6: `inspect` is Deterministic → primary must be `kind: script`.
+#
+# Fail-fast: `NO_TOKENS` (from capture-tokens.mjs, exit 3) → this transition FAILS
+# rather than emitting an empty, un-enforceable contract — never gate on nothing.
+workflows:
+  cap.inspect.capture-tokens:
+    verb: inspect
+    lifecycle: experimental
+    description: >
+      Parse an approved design-system markdown into the canonical token contract
+      { colors:[{token,hex}], fonts:[stack], scale:[sizes] } by wrapping the tested
+      capture core (capture-tokens.mjs). The palette + font stack + type scale the
+      rollout's token-adherence gate enforces per surface. Refuses to emit an empty
+      contract (NO_TOKENS).
+    snippet:
+      inputs:
+        # Absolute path to this pack's scripts-library/ (holds capture-tokens.mjs).
+        # The engine has no pack-dir scope, so the caller passes it explicitly.
+        scripts_dir:        { type: string, required: true }
+        # The approved design-system.md to capture.
+        design_system_path: { type: string, required: true }
+      outputs:
+        tokens: { type: object }
+    initialState: capturing
+    states:
+      capturing:
+        goal: Parse the design-system markdown into the canonical token contract.
+        transitions:
+          capture:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.capture-tokens
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.design_system_path"
+            output:
+              tokens: "$.output.json.tokens"
+      done: { terminal: true }

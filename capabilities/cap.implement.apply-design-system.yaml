@@ -1,0 +1,163 @@
+# capabilities/cap.implement.apply-design-system.yaml
+#
+# ======================== REAL APPLY — spec §4b ============================
+# The PRODUCTION apply leaf of the rollout spine. Supersedes the offline stub
+# (design/cap.run.apply-design-system) — that stub is KEPT as the offline test
+# substrate (see its header + flow.rollout.offline); this cap NEVER falls back to
+# it. If the model call fails, this cap FAILS FAST (no silent stub substitution).
+#
+# WHAT IT DOES (spec §4b tiered economics):
+#   apply = `kind: agent` bound to the **rollout affinity** (→ deepseek via the
+#   operator's models.yaml, swappable in one line) running the hash-pinned
+#   `implement.roll-surface` skill over ONE surface + the captured token contract
+#   → writes ONE self-contained HTML surface that uses ONLY the design system's
+#   tokens, adapted to the surface's layout-type. COMMODITY propagation of an
+#   already-decided design (frontier designed it; this only rolls it out).
+#
+# ENGINE GROUNDING (V-rules, mirrors cap.implement.generate-direction):
+#   - VERB (V1/V6): the COGNITIVE verb `implement` (the stub used the DETERMINISTIC
+#     verb `run`, correct for a script emitter; a Deterministic verb's primary may
+#     not be an agent — V6). Real, model-driven apply is cognitive → `implement`.
+#   - AGENT PRIMARY (V6): `kind: agent` is NOT a legal INITIAL-state primary, so the
+#     initial state is a `noop` prep gate and the agent step lives in the SECOND
+#     state (`applying`).
+#   - AFFINITY: `affinity: rollout` is an OPEN activity key resolved against the
+#     operator's models.yaml `activity: { rollout: ... }` (see docs/models.example.yaml).
+#   - MODELS.YAML: any `kind: agent` step makes `gateway.models_yaml` a hard
+#     requirement at check + serve (AGENT_MODELS_YAML_REQUIRED).
+#
+# FAIL-FAST SURFACE_NOT_ROLLED (coding-write-evidence discipline): the agent's own
+# claim is NOT trusted. `requires_file_write: true` refuses an agent turn with zero
+# real write_file calls; then a DETERMINISTIC verifier (verify.surface-rolled)
+# re-opens the surface at its computed path and confirms it exists + parses as HTML.
+# The anti-regression token-adherence + detect gates run SEPARATELY in the
+# flow.rollout orchestrator (identical to the offline stub twin). Never a stub,
+# never a fabricated pass.
+workflows:
+  cap.implement.apply-design-system:
+    verb: implement
+    lifecycle: experimental
+    tags: [design, rollout, commodity, token-adherence, deepseek]
+    description: >
+      REAL apply: a `kind: agent` step bound to the `rollout` affinity (→ deepseek,
+      swappable) runs the hash-pinned implement.roll-surface skill over one surface
+      + the captured token contract and WRITES one self-contained HTML surface using
+      ONLY the design system's tokens, adapted to the layout-type. Fail-fast
+      SURFACE_NOT_ROLLED when no real, parseable HTML file was written (no fallback
+      to the stub).
+    snippet:
+      inputs:
+        # Directory to write the rolled surface into (the run's artifacts dir).
+        out_dir: { type: string, required: true }
+        # The surface descriptor { id, file, layout_type } as a JSON object.
+        surface: { type: object, required: true }
+        # The captured token contract { colors, fonts, scale } as a JSON object.
+        tokens:  { type: object, required: true }
+        # Optional retry attempt number (carried into the record).
+        attempt: { type: integer, default: 0 }
+      outputs:
+        rolled: { type: object }
+    initialState: preparing
+    initialContext:
+      rolled_ok: false
+      rolled:    {}
+      reason:    ""
+    states:
+
+      # V6-legal initial primary (noop): a prep gate so the agent step is not the
+      # initial-state transition. Routes straight into apply.
+      preparing:
+        goal: Prepare to roll one surface to the captured design system.
+        transitions:
+          prepare:
+            target: applying
+            actor: deterministic
+            executor: { kind: noop }
+
+      # THE REAL APPLY STEP. `kind: agent` + rollout affinity + the pinned skill
+      # (in scope at state level → assembled as the system message). The goal (the
+      # task/user message) injects the surface, the token contract and the exact
+      # output path. requires_file_write makes a zero-write turn a loud failure.
+      applying:
+        skills: [implement.roll-surface]
+        goal: >
+          Roll ONE surface to the approved design system (token-adherent).
+        transitions:
+          apply:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: rollout
+              requires_file_write: true
+              max_seconds: 900
+              # EXPLICIT file host rooted at the (absolute) out_dir so write_file /
+              # read_file are ALWAYS granted (same seam as generate-direction).
+              tools:
+                - "file:{{ $.workflow.input.out_dir }}"
+              owned_files:
+                - "{{ $.workflow.input.out_dir }}/rolled-{{ $.workflow.input.surface.id }}.html"
+              goal: >
+                Roll ONE surface to the approved design system as a single self-
+                contained, renderable HTML file and WRITE it with your file-write
+                tool. Your file tools are ROOTED at your working directory — use
+                RELATIVE paths. Write to EXACTLY this relative path:
+
+                  rolled-{{ $.workflow.input.surface.id }}.html
+
+                surface: {{ $.workflow.input.surface }}
+
+                Use ONLY this token contract — its palette hexes and font stack are
+                a CLOSED set; a deterministic gate will BLOCK any off-system color
+                or font:
+                  tokens = {{ $.workflow.input.tokens }}
+
+                Adapt the LAYOUT to the surface's layout_type (landing / blog /
+                utility / app-screen) while keeping the tokens + design DNA
+                constant. Inline ALL CSS; no external fonts/styles/scripts/images.
+                Write the file, then stop — the on-system file on disk is the
+                deliverable, not a description of it.
+            output:
+              agent_report: "$.output"
+
+      # DETERMINISTIC verify (coding-write-evidence): recompute the artifact path
+      # and confirm a real, parseable HTML file was written. Emits the `rolled`
+      # record (mirrors the stub's contract) + a `rolled_ok` flag the gate routes on.
+      verifying:
+        goal: Verify the agent wrote a real, renderable rolled surface.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.surface-rolled
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.surface"
+                - "$.workflow.input.attempt"
+            output:
+              rolled_ok: "$.output.json.rolled_ok"
+              rolled:    "$.output.json.rolled"
+              reason:    "$.output.json.reason"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.rolled_ok == true" }
+          not_rolled:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.rolled_ok != true" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

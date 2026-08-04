@@ -1,0 +1,51 @@
+# capabilities/cap.inspect.collect-surface.yaml
+#
+# Spec §4b (Increment IV-a) — the COLLECTOR + CURSOR-ADVANCE for flow.rollout, as a
+# co-located snippet cap so the accumulated `rolled` set is a first-class slot (V13
+# / array-append). Runs only on the SUCCESS arm of the per-surface gate (token-
+# adherence clean AND detect blocking == 0): appends the gate-passing surface to the
+# `rolled` ledger and advances the fan-out cursor (+ resets the retry counter).
+# Mirrors cap.inspect.collect-candidate.
+workflows:
+  cap.inspect.collect-surface:
+    verb: inspect
+    lifecycle: experimental
+    description: >
+      Append a gate-passing rolled surface to the `rolled` ledger and advance the
+      fan-out cursor → { rolled, rolled_count, next_idx (surface_idx+1), retry_reset
+      (0) }. The array-append + cursor advance + retry reset the success arm needs,
+      in one deterministic hop.
+    snippet:
+      inputs:
+        # The just-rolled, gate-passing surface record (from cap.run.apply-design-system).
+        rolled_surface: { type: object,  required: true }
+        # The rolled ledger so far.
+        rolled_in:      { type: array,   default: [] }
+        # The cursor to advance.
+        surface_idx:    { type: integer, default: 0 }
+      outputs:
+        rolled:       { type: array }
+        rolled_count: { type: integer }
+        next_idx:     { type: integer }
+        retry_reset:  { type: integer }
+    initialState: collecting
+    states:
+      collecting:
+        goal: Append the gate-passing surface + advance the cursor.
+        transitions:
+          collect:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.collect-surface
+              args:
+                - "$.workflow.input.rolled_surface"
+                - "$.workflow.input.rolled_in"
+                - "$.workflow.input.surface_idx"
+            output:
+              rolled:       "$.output.json.rolled"
+              rolled_count: "$.output.json.rolled_count"
+              next_idx:     "$.output.json.next_idx"
+              retry_reset:  "$.output.json.retry_reset"
+      done: { terminal: true }

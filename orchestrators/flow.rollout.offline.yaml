@@ -1,0 +1,311 @@
+# orchestrators/flow.rollout.offline.yaml
+#
+# ===================== OFFLINE TWIN — the headless drive test substrate =====
+# An EXACT twin of the production rollout spine (flow.rollout) that differs in ONE
+# leaf: the `applying` step calls the OFFLINE STUB (design/cap.run.apply-design-
+# system, a deterministic token-adherent surface emitter) instead of the REAL
+# model-driven cap (design/cap.implement.apply-design-system, a `kind: agent` step
+# bound to the `rollout` affinity → deepseek). This mirrors the anneal twins
+# (flow.anneal.structure-first[.offline]).
+#
+# WHY A TWIN EXISTS (honest — a real duplication, forced by the engine):
+#   - praxec `kind: workflow` `definitionId:` is a STATIC, check-resolved reference
+#     (V22) — it cannot be parameterised per run, so "stub vs real apply" cannot be
+#     a runtime input to ONE orchestrator.
+#   - `kind: agent` is not a legal offline path (it requires models.yaml + a
+#     provider key/credit), and the pack's NO-FALLBACK rule forbids the real cap
+#     silently degrading to the stub.
+#   Therefore the production spine (real apply) and the offline drive test (stub
+#   apply) are two thin orchestrators over the SAME shared caps (capture-tokens,
+#   next-surface, token-adherence, detect-antipatterns, collect-surface). Only the
+#   `applying` leaf differs; keep the twins in sync.
+#
+# THE SPINE (spec §4b, Increment IV-a):
+#   capture(design system → token contract) → FAN OUT over the surface list:
+#     for each surface:  apply(stub, token-adherent) → GATE: token-adherence(NEW,
+#     the anti-regression heart) + detect-antipatterns(REUSED usability floor) →
+#     pass ⇒ collect + advance ; fail ⇒ bounded retry ; exhausted ⇒ FAIL
+#     ROLLOUT_REGRESSED → assemble the collected adherent surfaces → done.
+#   (Real cpm-plan waves + real deepseek + real gh PR-open are IV-b/IV-c.)
+#
+# Driven by scripts-library/smoke.rollout.sh (offline: no LLM, no gh, no key).
+# ===========================================================================
+
+workflows:
+
+  flow.rollout.offline:
+    lifecycle: experimental
+    description: >
+      OFFLINE TWIN of flow.rollout: identical capture → per-surface apply →
+      token-adherence + detect gates → collect spine, but the apply leaf uses the
+      deterministic offline STUB (design/cap.run.apply-design-system) so the whole
+      spine is drivable HEADLESS + OFFLINE with no OpenRouter key/credit. Proves the
+      anti-regression floor: an adherent surface collects; an off-system surface
+      (defect:true) fails token-adherence and, after bounded retry, fails
+      ROLLOUT_REGRESSED. Test substrate only; production uses flow.rollout.
+    inputs:
+      # The surfaces to roll (each { id, file, layout_type, defect? }). A fixed
+      # 2-surface stub list by default; the smoke overrides it (adherent set vs an
+      # injected off-system surface).
+      surfaces:
+        type: array
+        default:
+          - { id: "landing", file: "src/pages/index.astro", layout_type: "landing" }
+          - { id: "blog",    file: "src/pages/blog/index.astro", layout_type: "blog" }
+      # The approved design-system markdown to capture into the token contract.
+      design_system_path: { type: string,  default: "" }
+      # Absolute path to this pack's scripts-library/ (threaded to the script caps).
+      scripts_dir:        { type: string,  default: "" }
+      # Directory to write rolled surfaces into.
+      out_dir:            { type: string,  default: "" }
+      # Bounded per-surface retry budget before a non-adherent surface flags
+      # ROLLOUT_REGRESSED. With the deterministic stub, a defect surface is stable,
+      # so it exhausts the budget and regresses (the anti-regression proof).
+      max_retry:          { type: integer, default: 1 }
+    outputs:
+      tokens:       { type: object }
+      rolled:       { type: array }
+      rolled_count: { type: integer }
+      off_system:   { type: array }
+      reason:       { type: string }
+    initialContext:
+      tokens:                 {}
+      surface_idx:            0
+      retry:                  0
+      rolled:                 []
+      rolled_count:           0
+      phase:                  ""
+      current_surface:        {}
+      surface_id:             ""
+      rolled_surface:         {}
+      tok_adherent:           true
+      off_system:             []
+      tok_count:              0
+      cand_antipattern_count: 0
+      fail_count:             0
+      reason:                 ""
+    initialState: capturing
+    states:
+
+      # CAPTURE — parse the approved design-system markdown into the token contract
+      # the per-surface gate enforces (sub-instance; threads scripts_dir).
+      capturing:
+        goal: Capture the design system into the canonical token contract.
+        transitions:
+          capture:
+            target: rolling
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.capture-tokens
+              use:
+                inputs:
+                  scripts_dir:        "$.workflow.input.scripts_dir"
+                  design_system_path: "$.workflow.input.design_system_path"
+                outputs:
+                  "$.context.tokens": tokens
+
+      # FAN-OUT CURSOR — peek the surface at the cursor (shared cap; peek-only so a
+      # non-adherent surface can be re-rolled in place).
+      rolling:
+        goal: Pick the next surface to roll (or exhaust the list).
+        transitions:
+          pick:
+            target: roll_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.next-surface
+              use:
+                inputs:
+                  surfaces:    "$.workflow.input.surfaces"
+                  surface_idx: "$.context.surface_idx"
+                outputs:
+                  "$.context.phase":           phase
+                  "$.context.current_surface": current_surface
+                  "$.context.surface_id":      surface_id
+
+      roll_gate:
+        transitions:
+          apply:
+            target: applying
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.phase == 'picked'" }
+          assemble:
+            target: assembling
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.phase == 'exhausted'" }
+          unexpected:
+            target: fail_unexpected
+            actor: deterministic
+
+      # APPLY one surface — the OFFLINE STUB (the ONLY leaf that differs from the
+      # production spine). Emits a token-adherent rolled surface (or, for a
+      # defect:true surface, an off-system one the gate will block).
+      applying:
+        goal: Roll the picked surface to the token contract (offline stub).
+        transitions:
+          apply:
+            target: verifying_tokens
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.apply-design-system
+              use:
+                inputs:
+                  out_dir: "$.workflow.input.out_dir"
+                  surface: "$.context.current_surface"
+                  tokens:  "$.context.tokens"
+                  attempt: "$.context.retry"
+                outputs:
+                  "$.context.rolled_surface": rolled
+
+      # GATE 1 — THE ANTI-REGRESSION HEART: token-adherence (sub-instance; threads
+      # scripts_dir). `count` (an integer) is the scalar the gate branches on.
+      verifying_tokens:
+        goal: Assert the rolled surface uses ONLY the design system's tokens.
+        transitions:
+          verify:
+            target: verifying_detect
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.token-adherence
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  artifact:    "$.context.rolled_surface.artifact"
+                  tokens:      "$.context.tokens"
+                outputs:
+                  "$.context.tok_adherent": adherent
+                  "$.context.off_system":   off_system
+                  "$.context.tok_count":    count
+
+      # GATE 2 — REUSED usability floor: detect-antipatterns (blocking-only count).
+      verifying_detect:
+        goal: Run the deterministic usability floor over the rolled surface.
+        transitions:
+          detect:
+            target: tallying
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.detect-antipatterns
+              use:
+                inputs:
+                  artifact: "$.context.rolled_surface.artifact"
+                outputs:
+                  "$.context.cand_antipattern_count": antipattern_count
+
+      # TALLY — fold both gate verdicts into ONE scalar the surface gate branches on
+      # (fail_count == 0 ⇔ token-adherent AND detect-clean). Avoids an OR guard.
+      tallying:
+        goal: Combine the token-adherence + detect verdicts into a single fail count.
+        transitions:
+          tally:
+            target: surface_gate
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              fail_count: { add: ["$.context.tok_count", "$.context.cand_antipattern_count"] }
+
+      # SURFACE GATE — commodity can't regress: pass ⇒ collect + advance ; fail with
+      # retry budget ⇒ re-roll ; fail exhausted ⇒ ROLLOUT_REGRESSED.
+      surface_gate:
+        transitions:
+          collect:
+            target: collecting
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.fail_count == 0" }
+          retry:
+            target: retrying
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.fail_count > 0" }
+              - { kind: expr, expr: "$.context.retry < $.workflow.input.max_retry" }
+          regress:
+            target: fail_regressed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.fail_count > 0" }
+              - { kind: expr, expr: "$.context.retry >= $.workflow.input.max_retry" }
+
+      # COLLECT — append the gate-passing surface + advance the cursor + reset retry
+      # (shared cap; array-append lives in code per V13).
+      collecting:
+        goal: Collect the adherent surface; advance the cursor; loop.
+        transitions:
+          collect:
+            target: rolling
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.collect-surface
+              use:
+                inputs:
+                  rolled_surface: "$.context.rolled_surface"
+                  rolled_in:      "$.context.rolled"
+                  surface_idx:    "$.context.surface_idx"
+                outputs:
+                  "$.context.rolled":       rolled
+                  "$.context.rolled_count": rolled_count
+                  "$.context.surface_idx":  next_idx
+                  "$.context.retry":        retry_reset
+
+      # RETRY — a non-adherent surface within budget: bump the attempt, re-roll the
+      # SAME surface (the cursor did not advance).
+      retrying:
+        goal: Re-roll the non-adherent surface (bounded retry).
+        transitions:
+          retry:
+            target: applying
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              retry: { add: ["$.context.retry", 1] }
+
+      # FAIL-FAST ROLLOUT_REGRESSED (spec §4b): a surface still off-system after the
+      # retry budget. `off_system` in context names the offending color(s)/font(s).
+      fail_regressed:
+        goal: Record the ROLLOUT_REGRESSED fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "ROLLOUT_REGRESSED" }
+
+      fail_unexpected:
+        goal: Record a broken fan-out phase contract.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "UNEXPECTED_PICK_PHASE" }
+
+      # ASSEMBLE — the surface list is exhausted; the `rolled` ledger holds every
+      # adherent surface. Real gh PR-open on the target repo_root is IV-c; here the
+      # collected set IS the assembled rollout (PR-plan payload).
+      assembling:
+        goal: Assemble the collected adherent surfaces (PR-plan; real gh is IV-c).
+        transitions:
+          assemble:
+            target: done
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "ROLLOUT_COMPLETE" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

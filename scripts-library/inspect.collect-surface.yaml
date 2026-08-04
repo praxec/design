@@ -1,0 +1,55 @@
+# scripts-library/inspect.collect-surface.yaml
+#
+# The COLLECTOR + LEDGER-KEEPER + CURSOR-ADVANCE for flow.rollout (spec §4b). Runs
+# only on the SUCCESS arm of the per-surface gate (token-adherence clean AND detect
+# blocking == 0): it appends the just-rolled, gate-passing surface to the `rolled`
+# ledger and advances the fan-out cursor to the next surface (resetting the retry
+# counter). Mirrors cap.inspect.collect-candidate.
+#
+# WHY A CO-LOCATED CAP (V13 / array-append): the transition-output language has no
+# array-append op, so the accumulation of the `rolled` set lives HERE, in code —
+# and being a snippet-typed cap makes `rolled` a first-class slot (and the scalar
+# `rolled_count` a value the assemble gate can branch on). The cursor advance
+# (`next_idx`) + retry reset (`retry_reset`) are folded in as outputs so the
+# success arm is a single hop back to the cursor.
+#
+# Args (script arg renderer stringifies object/array values):
+#   $1 — rolled_surface (JSON object; { id, artifact, file, layout_type, ... } from apply)
+#   $2 — rolled_in (JSON array; the rolled ledger so far)
+#   $3 — surface_idx (int; the cursor to advance)
+#
+# Emits ONE JSON verdict on stdout, read at $.output.json.*; ALWAYS exits 0:
+#   { rolled: array (the collected adherent surfaces),
+#     rolled_count: int (len(rolled)),
+#     next_idx: int (surface_idx + 1 — the advanced cursor),
+#     retry_reset: int (0 — the next surface starts fresh) }
+version: "1.0.0"
+scripts:
+  inspect.collect-surface:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic collector: append the gate-passing surface + advance the cursor.
+      function j(v, d) { try { const x = JSON.parse(v); return x === undefined ? d : x; } catch { return d; } }
+      const rolledSurface = j(process.argv[2], {}) || {};
+      const rolledIn = j(process.argv[3], []) || [];
+      const idx = parseInt(process.argv[4] || "0", 10) || 0;
+
+      const record = {
+        id: rolledSurface.id || "",
+        artifact: rolledSurface.artifact || "",
+        file: rolledSurface.file || "",
+        layout_type: rolledSurface.layout_type || "",
+        generator: rolledSurface.generator || "",
+        adherent: true,        // this arm only runs when the surface CLEARED both gates
+      };
+      const rolled = rolledIn.concat([record]);
+
+      console.log(JSON.stringify({
+        rolled,
+        rolled_count: rolled.length,
+        next_idx: idx + 1,
+        retry_reset: 0,
+      }));

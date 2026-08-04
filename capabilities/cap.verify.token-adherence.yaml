@@ -1,0 +1,65 @@
+# capabilities/cap.verify.token-adherence.yaml
+#
+# Spec §4b (Increment IV-a) — THE ANTI-REGRESSION HEART of flow.rollout, as a
+# governed gate cap. Given a rolled surface + the token contract (from cap.inspect.
+# capture-tokens), assert the surface uses ONLY the design system's palette + font
+# stack; ANY off-system hex/rgb()/font family is a BLOCKING finding. A commodity
+# model drifting back to off-system colors/fonts fails HERE and the rollout retries
+# (bounded) or flags ROLLOUT_REGRESSED. Mirrors cap.verify.detect-antipatterns
+# EXACTLY (the deterministic-gate pattern): verb `verify` (V6 → primary `kind:
+# script`), a single leaf wrapping the tested core (token-adherence.mjs, single
+# source of truth) via the `verify.token-adherence` script-skill.
+#
+# Because the engine exposes no pack-directory scope, `scripts_dir` (the absolute
+# path to this pack's scripts-library/, holding token-adherence.mjs) is threaded
+# in — same seam as score-axes / detect-antipatterns' co-located scripts.
+#
+# The gate emits the verdict into $.context; the rollout spine branches on
+# `adherent == true` (count == 0) before a surface is collected. The full
+# `off_system` list is carried so the flagged surface (and, in IV-c, the retry
+# prompt to the coder) can name each offending color/font + line.
+workflows:
+  cap.verify.token-adherence:
+    verb: verify
+    lifecycle: experimental
+    description: >
+      Deterministic token-adherence gate: parse every color (#hex / rgb() / rgba())
+      and font-family in a rolled surface and assert each is in the design system's
+      token contract — the exact token hexes (+ transparent/inherit/currentColor)
+      and the contract's font stack. Any off-system color/font is a BLOCKING
+      finding. Emits { adherent (== 0 off-system), off_system:[{kind,value,line}],
+      count }. LLM-free; `adherent` is the gate the rollout branches on (an off-
+      system surface fails HARD and retries — the anti-regression floor).
+    snippet:
+      inputs:
+        # Absolute path to this pack's scripts-library/ (holds token-adherence.mjs).
+        scripts_dir: { type: string, required: true }
+        # The rolled surface file (html/css/astro) to gate.
+        artifact:    { type: string, required: true }
+        # The token contract (from cap.inspect.capture-tokens) as a JSON object —
+        # the engine stringifies it into the script arg.
+        tokens:      { type: object, required: true }
+      outputs:
+        adherent:   { type: boolean }
+        off_system: { type: array }
+        count:      { type: integer }
+    initialState: verifying
+    states:
+      verifying:
+        goal: Assert the rolled surface uses ONLY the design system's token palette + stack.
+        transitions:
+          verify:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.token-adherence
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.artifact"
+                - "$.workflow.input.tokens"
+            output:
+              adherent:   "$.output.json.adherent"
+              off_system: "$.output.json.off_system"
+              count:      "$.output.json.count"
+      done: { terminal: true }

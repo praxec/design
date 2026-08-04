@@ -1,0 +1,46 @@
+# capabilities/cap.inspect.next-surface.yaml
+#
+# Spec §4b (Increment IV-a) — the FAN-OUT CURSOR for flow.rollout, as a co-located
+# snippet cap so the picked `current_surface` is a first-class slot the apply step
+# can consume (V13). Mirrors cap.inspect.next-seed EXACTLY: verb `inspect` (V6 →
+# primary `kind: script`), a single leaf wrapping the tested cursor body
+# (inspect.next-surface) that PEEKS surfaces[surface_idx] (no advance — the
+# collector advances on success so a failed surface can be re-rolled).
+workflows:
+  cap.inspect.next-surface:
+    verb: inspect
+    lifecycle: experimental
+    description: >
+      Deterministic fan-out cursor over the rollout's surface list: peek the surface
+      at `surface_idx` → { phase (picked|exhausted), current_surface, surface_id }.
+      Peek-only so a non-adherent surface can be retried in place; the collector
+      advances the cursor after a surface is collected.
+    snippet:
+      inputs:
+        # The surface descriptors (each { id, file, layout_type, defect? }).
+        surfaces:    { type: array,   required: true }
+        # The monotone cursor (advanced by cap.inspect.collect-surface on success).
+        surface_idx: { type: integer, default: 0 }
+      outputs:
+        phase:           { type: string }
+        current_surface: { type: object }
+        surface_id:      { type: string }
+    initialState: picking
+    states:
+      picking:
+        goal: Peek the next surface to roll (or exhaust the list).
+        transitions:
+          pick:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.next-surface
+              args:
+                - "$.workflow.input.surfaces"
+                - "$.workflow.input.surface_idx"
+            output:
+              phase:           "$.output.json.phase"
+              current_surface: "$.output.json.current_surface"
+              surface_id:      "$.output.json.surface_id"
+      done: { terminal: true }

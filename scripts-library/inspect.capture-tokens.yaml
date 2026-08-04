@@ -1,0 +1,48 @@
+# scripts-library/inspect.capture-tokens.yaml
+#
+# Thin, honest wrapper over the Increment-IV-a capture core `capture-tokens.mjs`
+# (spec §4b) — mirrors inspect.score-axes.yaml exactly: LOGIC lives in the tested
+# .mjs, this script-skill just locates it under the pack's own `scripts_dir` (the
+# engine exposes no pack-directory scope, so the orchestrator/operator threads it
+# in) and shells to `node`. We DO NOT re-implement the parse here — single source
+# of truth stays in capture-tokens.mjs.
+#
+# Verb `inspect` (the blessed DETERMINISTIC introspection verb): reads a design-
+# system markdown and writes ONE read-only structured artifact — the canonical
+# token contract { colors[], fonts[], scale[] } the rollout gate enforces.
+#
+#   Args: [scripts_dir, design_system_path]
+#     scripts_dir         absolute path to this pack's scripts-library/ (holds capture-tokens.mjs)
+#     design_system_path  the approved design-system.md to capture
+#
+# Emits capture-tokens.mjs's JSON verbatim on stdout — { colors, fonts, scale } —
+# auto-parsed to $.output.json for the cap's `tokens` output mapping.
+#
+# Fail-fast:
+#   exit 2 ARGS_UNSET                 — scripts_dir / design_system_path missing
+#   exit 5 CAPTURE_TOOL_UNRESOLVED    — capture-tokens.mjs not under scripts_dir
+#   exit 3 NO_INPUT / NO_TOKENS (from capture-tokens.mjs) — absent md, or a md
+#          with no `--token #hex` rows; never emit an empty, un-enforceable
+#          contract. Non-zero propagates → the transition fails.
+version: "1.0.0"
+scripts:
+  inspect.capture-tokens:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      DS_PATH="${2:-}"
+
+      if [ -z "$SCRIPTS_DIR" ] || [ -z "$DS_PATH" ]; then
+        echo '{"error":"ARGS_UNSET","need":["scripts_dir","design_system_path"]}' >&2
+        exit 2
+      fi
+      TOOL="$SCRIPTS_DIR/capture-tokens.mjs"
+      if [ ! -f "$TOOL" ]; then
+        printf '{"error":"CAPTURE_TOOL_UNRESOLVED","looked":"%s"}\n' "$TOOL" >&2
+        exit 5
+      fi
+      exec node "$TOOL" "$DS_PATH"

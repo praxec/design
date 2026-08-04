@@ -1,0 +1,83 @@
+# scripts-library/verify.surface-rolled.yaml
+#
+# The coding-write-evidence VERIFIER for the REAL apply cap
+# (design/cap.implement.apply-design-system, Increment IV-c). The rollout agent's
+# own claim is NOT trusted: this deterministic step re-opens the rolled surface at
+# its COMPUTED path and confirms a real, parseable HTML file was written. It is the
+# fail-fast SURFACE_NOT_ROLLED gate — the symmetric counterpart of the generation
+# spine's verify.candidate-renderable (spec §4b/§5). The token-adherence + detect
+# gates run SEPARATELY in the flow.rollout orchestrator (as they do for the offline
+# stub twin) — this leaf only proves the file exists + parses.
+#
+#   Args: [out_dir, surface_json, attempt?]
+#     out_dir       directory the agent was told to write into
+#     surface_json  the surface descriptor { id, file, layout_type } (echoed out)
+#     attempt       optional retry attempt (carried into the record)
+#   The artifact filename is rolled-<surface.id>.html (mirrors the stub's path).
+#
+# Emits (ALWAYS exit 0 — routing is done by the cap's verify_gate on `rolled_ok`):
+#   { rolled_ok: true,  rolled: { id, artifact, file, layout_type, generator, attempt }, reason: "" }
+#   { rolled_ok: false, rolled: {},                                                       reason: "SURFACE_NOT_ROLLED" }
+# Only a genuinely missing arg is a hard error (exit 2): a missing/unparseable
+# surface is a first-class NOT_ROLLED verdict, not a crash.
+version: "1.0.0"
+scripts:
+  verify.surface-rolled:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic rolled-surface verifier. No LLM, no network.
+      const { existsSync, readFileSync } = require("node:fs");
+      const { join } = require("node:path");
+
+      const outDir = process.argv[2];
+      if (!outDir) {
+        console.error(JSON.stringify({ error: "OUT_DIR_UNSET" }));
+        process.exit(2);
+      }
+      let surface = {};
+      try {
+        surface = process.argv[3] ? JSON.parse(process.argv[3]) : {};
+      } catch {
+        console.error(JSON.stringify({ error: "SURFACE_UNPARSEABLE" }));
+        process.exit(2);
+      }
+      const attempt = parseInt(process.argv[4] || "0", 10) || 0;
+      const id = surface.id || "";
+      const artifact = join(outDir, `rolled-${id}.html`);
+
+      const notRolled = (message) =>
+        console.log(JSON.stringify({
+          rolled_ok: false,
+          rolled: {},
+          reason: "SURFACE_NOT_ROLLED",
+          message,
+        }));
+
+      // 1. The file must actually exist (a described-but-unwritten surface).
+      if (!existsSync(artifact)) {
+        notRolled(`rolled surface HTML was not written: ${artifact}`);
+        process.exit(0);
+      }
+      // 2. It must parse as HTML.
+      const html = readFileSync(artifact, "utf8");
+      if (!/<html|<!doctype|<body/i.test(html)) {
+        notRolled(`rolled surface does not parse as HTML: ${artifact}`);
+        process.exit(0);
+      }
+      // Rolled — emit the record (mirrors the stub's `rolled` contract so the
+      // token-adherence + detect gates downstream are identical).
+      console.log(JSON.stringify({
+        rolled_ok: true,
+        reason: "",
+        rolled: {
+          id,
+          artifact,
+          file: surface.file || "",
+          layout_type: surface.layout_type || "",
+          generator: "rollout-agent (rollout affinity → deepseek)",
+          attempt,
+        },
+      }));

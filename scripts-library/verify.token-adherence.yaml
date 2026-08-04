@@ -1,0 +1,54 @@
+# scripts-library/verify.token-adherence.yaml
+#
+# Thin, honest wrapper over THE ANTI-REGRESSION HEART `token-adherence.mjs`
+# (spec §4b, Increment IV-a) — mirrors inspect.score-axes.yaml exactly: LOGIC
+# lives in the tested .mjs, this script-skill just locates it under the pack's own
+# `scripts_dir` (the engine exposes no pack-directory scope, so the orchestrator/
+# operator threads it in) and shells to `node`. We DO NOT re-implement the check
+# here — single source of truth stays in token-adherence.mjs.
+#
+# Verb `verify` (the blessed DETERMINISTIC gate verb — like verify.antipatterns):
+# reads a rolled surface + the token contract, emits the off-system findings the
+# rollout branches on. LLM-free.
+#
+#   Args: [scripts_dir, artifact, tokens_json]
+#     scripts_dir   absolute path to this pack's scripts-library/ (holds token-adherence.mjs)
+#     artifact      the rolled surface file (html/css/astro) to gate
+#     tokens_json   the token contract as a JSON string (the engine stringifies an
+#                   object script arg) OR a path to a contract .json file
+#
+# Emits token-adherence.mjs's JSON verbatim on stdout —
+# { off_system: [{kind,value,line}], adherent, count } — auto-parsed to
+# $.output.json.* for the cap's output mapping. A run that FINDS off-system tokens
+# exits 0 (adherent:false is data the flow gates on, not a tool error).
+#
+# Fail-fast:
+#   exit 2 ARGS_UNSET                    — scripts_dir / artifact / tokens missing
+#   exit 5 ADHERENCE_TOOL_UNRESOLVED     — token-adherence.mjs not under scripts_dir
+#   exit 3 ARTIFACT_ABSENT (from token-adherence.mjs) — the surface file does not
+#          exist (a gate cannot be asserted over a surface that was never written)
+#   exit 4 CONTRACT_UNPARSEABLE / CONTRACT_EMPTY — no palette to enforce.
+#          Non-zero propagates → the transition fails.
+version: "1.0.0"
+scripts:
+  verify.token-adherence:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      ARTIFACT="${2:-}"
+      TOKENS="${3:-}"
+
+      if [ -z "$SCRIPTS_DIR" ] || [ -z "$ARTIFACT" ] || [ -z "$TOKENS" ]; then
+        echo '{"error":"ARGS_UNSET","need":["scripts_dir","artifact","tokens_json"]}' >&2
+        exit 2
+      fi
+      TOOL="$SCRIPTS_DIR/token-adherence.mjs"
+      if [ ! -f "$TOOL" ]; then
+        printf '{"error":"ADHERENCE_TOOL_UNRESOLVED","looked":"%s"}\n' "$TOOL" >&2
+        exit 5
+      fi
+      exec node "$TOOL" "$ARTIFACT" "$TOKENS"
