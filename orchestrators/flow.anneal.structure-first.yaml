@@ -281,6 +281,7 @@ workflows:
       cand_antipattern_count: 0
       cand_warnings:         []
       contact_sheet:         {}
+      preview_url:           ""
       steer:                 {}
       feedback:              []
     initialState: seeding
@@ -517,7 +518,7 @@ workflows:
         goal: Compose the eligible spread into one contact sheet for the human.
         transitions:
           build:
-            target: pruning
+            target: serving_preview
             actor: deterministic
             executor:
               kind: workflow
@@ -529,6 +530,26 @@ workflows:
                   out_dir:     "$.workflow.input.out_dir"
                 outputs:
                   "$.context.contact_sheet": contact_sheet
+
+      # Hand the human a URL, not a path. The sheet embeds each candidate live and
+      # candidates reference local artwork; both are restricted under `file://`,
+      # so serving over loopback is what makes the gate actually show designs.
+      # This step CANNOT fail the run — the cap degrades to an empty preview_url
+      # and the sheet is still on disk (see cap.run.serve-preview).
+      serving_preview:
+        goal: Serve the artifacts on loopback so the human gets a link.
+        transitions:
+          serve:
+            target: pruning
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.serve-preview
+              use:
+                inputs:
+                  out_dir: "$.workflow.input.out_dir"
+                outputs:
+                  "$.context.preview_url": preview_url
 
       # THE HUMAN PRUNE-AND-STEER (spec §6b) — present the pre-built contact sheet
       # of the usable spread (each cleared the usability floor; fit/G shown as
@@ -552,6 +573,7 @@ workflows:
                 inputs:
                   candidates:    "$.context.eligible"
                   contact_sheet: "$.context.contact_sheet"
+                  preview_url:   "$.context.preview_url"
                 outputs:
                   "$.context.chosen":   chosen
                   "$.context.steer":    steer

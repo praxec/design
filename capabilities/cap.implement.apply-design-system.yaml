@@ -96,7 +96,7 @@ workflows:
               kind: agent
               affinity: rollout
               requires_file_write: true
-              max_seconds: 900
+              max_seconds: 2700
               # EXPLICIT file host rooted at the (absolute) repo_root so read_file /
               # write_file / edit_file are ALWAYS granted over the TARGET REPO (same
               # seam as generate-direction's absolute-rooted file host). Absolute root

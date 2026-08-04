@@ -1,0 +1,48 @@
+# scripts-library/run.snapshot-candidate.yaml
+#
+# Copy a candidate aside before a revision pass touches it.
+#
+# The copy-preservation guard (verify.copy-preserved) compares the revised file
+# against what it looked like BEFORE the reviewer ran — so something has to hold
+# that "before". Keeping it on disk rather than in workflow context is
+# deliberate: the candidate is a whole HTML document, and threading one through
+# the run context to compare it later would bloat every subsequent state.
+#
+# The snapshot is also the ROLLBACK. A revision that alters copy fails the gate,
+# and the pre-review file is right there to restore from — a reviewer that made
+# the design worse or the copy wrong should not be able to destroy a candidate
+# the human might otherwise have chosen.
+#
+#   Args: [out_dir, candidate_id]
+#
+# Emits (ALWAYS exit 0 unless the candidate is missing — nothing to snapshot is
+# a real caller error, exit 3):
+#   { snapshot: "<out_dir>/candidate-<id>.pre-review.html", candidate: "<path>" }
+version: "1.0.0"
+scripts:
+  run.snapshot-candidate:
+    verb: run
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      const { existsSync, copyFileSync } = require("node:fs");
+      const { join } = require("node:path");
+
+      const outDir = process.argv[2];
+      const id = process.argv[3] || "";
+      if (!outDir) {
+        console.error(JSON.stringify({ error: "OUT_DIR_UNSET" }));
+        process.exit(2);
+      }
+      const candidate = join(outDir, `candidate-${id}.html`);
+      if (!existsSync(candidate)) {
+        console.error(JSON.stringify({
+          error: "CANDIDATE_NOT_RENDERABLE",
+          message: `nothing to review: ${candidate}`,
+        }));
+        process.exit(3);
+      }
+      const snapshot = join(outDir, `candidate-${id}.pre-review.html`);
+      copyFileSync(candidate, snapshot);
+      console.log(JSON.stringify({ snapshot, candidate }));
