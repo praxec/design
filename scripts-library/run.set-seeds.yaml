@@ -71,10 +71,24 @@ scripts:
       };
       const items = (x) => (Array.isArray(x) ? x.map(norm).filter(Boolean) : []);
       const render = (arr) => arr.map((n) => (n.toward ? `${n.axis}→${n.toward}` : n.axis));
+      // VALENCE. A dislike's `toward` is the REDIRECT TARGET — where the human
+      // wants the next divergence to GO — not a thing to shun. Rendering that
+      // bucket under the word "avoid" inverted the human's intent: a human who
+      // asked to move toward a storybook palette produced the seed note
+      // "avoid: color→storybook palette", instructing the generator to shun the
+      // very thing they asked for. The steer is the ONLY channel carrying human
+      // taste into the next round, so an ambiguity here is worse than no steer.
+      // Only an axis-ONLY dislike (the human named an axis but no direction) is
+      // a true avoid; anything with a direction is rendered as a redirect.
+      const renderRedirect = (arr) =>
+        arr.map((n) => (n.toward ? `on ${n.axis}, go toward: ${n.toward}` : `avoid ${n.axis}`));
       const amplify = items(steer.amplify);
       const avoid = items(steer.avoid);
       if (amplify.length || avoid.length) {
-        const note = `amplify: ${render(amplify).join(", ")}; avoid: ${render(avoid).join(", ")}`;
+        const parts = [];
+        if (amplify.length) parts.push(`amplify: ${render(amplify).join(", ")}`);
+        if (avoid.length) parts.push(renderRedirect(avoid).join("; "));
+        const note = parts.join("; ");
         seeds = seeds.map((s) => {
           const seed = s && typeof s === "object" ? { ...s } : { value: s };
           seed.notes = [seed.notes, note].filter(Boolean).join(" | ");
