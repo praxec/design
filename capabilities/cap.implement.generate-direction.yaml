@@ -137,7 +137,10 @@ workflows:
               kind: agent
               affinity: design
               requires_file_write: true
-              max_seconds: 900
+              # Real artwork + real type + a finished (not sketched) page is a
+              # LONGER turn than a polygon wireframe. 900s truncated candidates
+              # mid-write once the asset rule opened up.
+              max_seconds: 2700
               # EXPLICIT file host rooted at the (absolute) out_dir so write_file /
               # read_file are ALWAYS granted. CompositeToolHost only exposes file
               # tools when the connection root is ABSOLUTE (file_tools.rs:361-369);
@@ -180,9 +183,27 @@ workflows:
 
                 Be distinctive — do NOT emit the generic default (Inter + dark
                 gradient + rounded cards + centered symmetric grid). Express the
-                seed's DNA in real compositional geometry. Inline ALL CSS; no
-                external fonts/styles/scripts/images. Write the file, then stop —
-                the file on disk is the deliverable, not a description of it.
+                seed's DNA in real compositional geometry.
+
+                Inline ALL CSS. Make NO NETWORK REQUESTS — no CDN stylesheets,
+                no webfont services, no remote images or scripts; the page must
+                render with the network unplugged. But LOCAL FILES ALREADY IN
+                YOUR WORKING DIRECTORY ARE NOT EXTERNAL: if imagery or font
+                files are present, USE THEM via relative paths. Real artwork and
+                real type are what separate a design from a wireframe; do not
+                substitute inline <svg> shape-assemblies for a real image that
+                is sitting in the same folder.
+
+                Use the MODERN platform: semantic HTML5, CSS grid, custom
+                properties, aspect-ratio/object-fit, clamp(), :has(), container
+                queries, CSS animation, prefers-color-scheme and
+                prefers-reduced-motion. Inline <script> is allowed for
+                behaviour, but the page must be COMPLETE WITHOUT IT — the
+                scorer reads the STATIC DOM and CSS, so anything you build in
+                JavaScript is invisible to it and scores as absent.
+
+                Write the file, then stop — the file on disk is the deliverable,
+                not a description of it.
             output:
               agent_report: "$.output"
 

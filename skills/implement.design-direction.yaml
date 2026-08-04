@@ -74,19 +74,47 @@ skills:
       purpose. Every core need should be legible in the layout.
 
       ## 4. Emit ONE self-contained, renderable HTML file
+      Self-contained means NO NETWORK, not "no assets" — see the asset rule
+      below. Aim for a FINISHED page, not a scaffold: the artifact a human
+      prunes against should look like something shipped, not something
+      sketched.
       Write a SINGLE `.html` file to the exact output path you are given, using
       your file-write tool (a described-but-unwritten candidate is a FAILURE,
       never acceptable):
         - a complete document: `<!doctype html>` … `<html>` … `<body>`;
-        - ALL CSS inline in one `<style>` block — NO external stylesheets,
-          fonts, scripts, images or network requests of any kind (it must render
-          offline and be parseable by a headless screenshotter);
+        - ALL CSS inline in one `<style>` block, and NO NETWORK REQUESTS of any
+          kind — no CDN stylesheets, no Google Fonts, no remote scripts, no
+          remote images. The bar is that the file renders with the network
+          unplugged and is parseable by a headless screenshotter;
+        - LOCAL FILES IN YOUR WORKING DIRECTORY ARE NOT "EXTERNAL" — they ship
+          with the candidate and cost no network. If your working directory
+          holds imagery or font files, USE THEM, with ordinary relative markup
+          (`<img src="art/plate.png">`, `@font-face { src: url("fonts/x.woff2") }`).
+          Real artwork and real type are how a design stops reading as a
+          wireframe. Hand-assembling a picture out of a dozen inline `<svg>`
+          polygons when a real image sits beside you in the same folder is the
+          WRONG choice — it looks like a placeholder because it is one. Inline
+          `<svg>` remains right for icons, marks, and diagrams;
         - if your task names a content source, READ it and lay out THAT exact
           copy verbatim (do not invent, alter, reorder, or drop it) — the words
           are fixed, the composition is yours; only when no content source is
           given do you use representative content for the app type (not lorem-
           only) so the hierarchy and density are visible;
-        - no build step, no framework — just HTML + inline CSS.
+        - no build step and no framework, but DO use the modern platform:
+          semantic HTML5 (`<header> <nav> <main> <section> <article> <figure>
+          <figcaption> <time> <dialog> <details>`), CSS grid and subgrid,
+          custom properties, `aspect-ratio`, `object-fit`, `clamp()`,
+          container queries, `:has()`, CSS animations and transitions,
+          `<picture>`/`srcset`, and `prefers-color-scheme` /
+          `prefers-reduced-motion`. A 2015-era static page is not the target;
+          a current, well-built one is;
+        - INLINE `<script>` is allowed for BEHAVIOUR — but the page must be
+          COMPLETE AND CORRECT WITHOUT IT. Progressive enhancement is not a
+          style preference here, it is a hard requirement: the deterministic
+          scorer parses the STATIC DOM and CSS, so any layout, type or colour
+          you build with JavaScript is INVISIBLE to it and will score as if it
+          does not exist. Structure and style belong in HTML and CSS; script is
+          for interaction on top of them.
       Then finish. The path and candidate id are in your task; do not invent
       others. A deterministic verifier re-opens the file at that path and fails
       the whole step (`CANDIDATE_NOT_RENDERABLE`) if it is missing or does not
