@@ -26,3 +26,29 @@ layout:
   # never spawned by simply mounting this pack. Mapping the tier to an unused
   # dir keeps connections/ reference-only.
   connections:  ._unused_reference_connections
+
+# The `connections/` default dir intentionally holds reference templates that
+# this manifest remaps away (above) and never loads. Declare it reference-only
+# so `check`/`serve` don't warn UNSCANNED_DEFINITION_DIR on a by-design layout.
+reference_only:
+  - connections
+
+# The model requirement TRAVELS with the pack (praxec 0.0.48+): these OPEN
+# affinity keys have no default-chain fallback, so an operator who mounts this
+# pack must bind them in their models.yaml `activity:` block. `check`/`doctor`
+# read this block to surface the recommendation + `praxec models bind <affinity>`
+# instead of silently falling back to the commodity default. Recommendations are
+# swappable (the operator's key/cost stays authoritative), not hard pins.
+affinities:
+  design:
+    tier: frontier
+    capability: >-
+      UI-design annealing generation — fan out many genuinely-distinct directions
+      with real design taste (pay frontier where it CREATES).
+    recommended: openrouter/moonshotai/kimi-k3
+  rollout:
+    tier: commodity
+    capability: >-
+      Commodity apply of an already-decided design system across a site
+      (token-adherence-gated; pay commodity where it PROPAGATES).
+    recommended: openrouter/deepseek/deepseek-v4-pro
