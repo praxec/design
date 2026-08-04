@@ -161,3 +161,47 @@ test("restore degrades instead of throwing when there is no snapshot", () => {
   assert.equal(out.restored, false);
   assert.match(out.message, /no snapshot/);
 });
+
+// ---------------------------------------------------------------------------
+// THE REPORT CONTRACT. The first live review returned:
+//   { summary: "Saw the rendered page, found gaps, rewrote candidate-v3.html.",
+//     details: "See internal monologue." }
+// — a successful pass that told the human nothing. The observation is the ONLY
+// thing a screenshot buys that no CSS parser can produce; a bare
+// `review_report: "$.output"` let the model decline to provide it. These pin
+// the schema so the value cannot quietly evaporate again.
+// ---------------------------------------------------------------------------
+
+const CAP = readFileSync(
+  join(HERE, "..", "capabilities", "cap.implement.review-and-revise.yaml"),
+  "utf8",
+).replace(/\s+/g, " ");
+
+test("the review step REQUIRES observations, changes and a verdict", () => {
+  assert.match(CAP, /required: \[observations, changes, verdict\]/);
+});
+
+test("an observation must say what was SEEN and how bad it is", () => {
+  assert.match(CAP, /required: \[saw, severity\]/);
+  assert.match(CAP, /enum: \[blocking, notable, minor\]/);
+});
+
+test("a change must carry its reason, not just the edit", () => {
+  assert.match(CAP, /required: \[changed, why\]/);
+});
+
+// "The page is already good" has to be expressible, or every pass invents work.
+test("no_change_needed is a legitimate verdict", () => {
+  assert.match(CAP, /enum: \[revised, no_change_needed\]/);
+});
+
+test("the revision is gated on asset retention, not only on copy", () => {
+  assert.match(CAP, /checking_assets/);
+  assert.match(CAP, /subject: verify\.assets-resolve/);
+  // The snapshot is the baseline — without it the check is vacuous.
+  assert.match(CAP, /args: - "\$\.context\.candidate" - "\$\.context\.snapshot"/);
+});
+
+test("a stripped-asset revision routes to restore, not to done", () => {
+  assert.match(CAP, /stripped: target: restoring/);
+});
