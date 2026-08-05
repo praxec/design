@@ -220,3 +220,74 @@ test("the revision is gated on asset retention, not only on copy", () => {
 test("a stripped-asset revision routes to restore, not to done", () => {
   assert.match(CAP, /stripped: target: restoring/);
 });
+
+// ---------------------------------------------------------------------------
+// THE REPORT MUST MATCH THE DISK.
+//
+// Observed live: a review returned verdict "revised" with eight measured
+// observations ("the counts render at y=1418 on an 850px viewport") and eight
+// changes each traced to a numbered instruction — and wrote nothing. The
+// candidate was byte-identical to its own snapshot.
+//
+// Every guard passed, VACUOUSLY: renderable (it is the original), copy preserved
+// (identical), artwork retained (identical). All three constrain what a revision
+// MAY DO; none required that one HAPPENED.
+//
+// Not solved with `requires_file_write` — generation must always write, review
+// must not. "The page is already good" is a legitimate outcome the goal
+// explicitly invites, and refusing zero writes would turn the honest answer into
+// a failure. The check is "does what you SAID match what is THERE".
+// ---------------------------------------------------------------------------
+
+const LANDED = bodyRunner("verify.revision-landed.yaml");
+
+function landed(beforeHtml, afterHtml, report) {
+  const dir = mkdtempSync(join(tmpdir(), "sr-land-"));
+  const snap = join(dir, "candidate-c1.pre-review.html");
+  const cand = join(dir, "candidate-c1.html");
+  writeFileSync(snap, beforeHtml);
+  writeFileSync(cand, afterHtml);
+  return JSON.parse(
+    execFileSync("node", [LANDED, cand, snap, typeof report === "string" ? report : JSON.stringify(report)],
+      { encoding: "utf8" }),
+  );
+}
+
+test("claiming a revision while writing nothing is REVISION_NOT_WRITTEN", () => {
+  const out = landed(PAGE, PAGE, { verdict: "revised", changes: [{ changed: "lots", why: "reasons" }] });
+  assert.equal(out.landed, false);
+  assert.equal(out.reason, "REVISION_NOT_WRITTEN");
+  assert.equal(out.changed, false);
+});
+
+test("a real revision with a revised verdict lands", () => {
+  const out = landed(PAGE, PAGE.replace("</body>", "<footer>restyled</footer></body>"), { verdict: "revised" });
+  assert.equal(out.landed, true);
+  assert.equal(out.changed, true);
+});
+
+// The honest no-op must stay honest — this is why requires_file_write is wrong here.
+test("no_change_needed with an untouched file is a SUCCESS", () => {
+  const out = landed(PAGE, PAGE, { verdict: "no_change_needed", observations: [{ saw: "it reads well" }] });
+  assert.equal(out.landed, true);
+  assert.equal(out.changed, false);
+});
+
+test("no_change_needed while HAVING changed the file contradicts the disk", () => {
+  const out = landed(PAGE, PAGE.replace("Hello, Rosa", "<em>Hello, Rosa</em>"), { verdict: "no_change_needed" });
+  assert.equal(out.landed, false);
+  assert.equal(out.reason, "REPORT_CONTRADICTS_DISK");
+});
+
+// To claim "I looked and it is fine" you have to actually claim it. Silence plus
+// no work is not a successful review.
+test("a missing or unparseable verdict cannot excuse a zero-write pass", () => {
+  assert.equal(landed(PAGE, PAGE, {}).reason, "REVISION_NOT_WRITTEN");
+  assert.equal(landed(PAGE, PAGE, "See internal monologue.").reason, "REVISION_NOT_WRITTEN");
+});
+
+test("whitespace-only edits still count as changed — the check is bytes, not judgement", () => {
+  const out = landed(PAGE, PAGE + "\n", { verdict: "revised" });
+  assert.equal(out.changed, true);
+  assert.equal(out.landed, true);
+});
