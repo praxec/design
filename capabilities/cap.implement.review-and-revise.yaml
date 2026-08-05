@@ -129,7 +129,20 @@ workflows:
             executor:
               kind: agent
               affinity: design
+              # TWO DIFFERENT CLOCKS, and confusing them cost three runs.
+              #   max_seconds         — the per-model-CALL timeout.
+              #   step_budget_seconds — the TOTAL for the step across the whole
+              #                         chain-walk, DEFAULT 900.
+              # This step is an agentic session, not a call: navigate, screenshot,
+              # inspect at three viewports, check dark mode, read the brief, write
+              # the file, re-navigate, re-screenshot to confirm. Ten-plus model
+              # calls, each carrying screenshots into a growing multimodal
+              # context, at effort: high. Raising max_seconds alone did nothing —
+              # the run died at 900s with AGENT_STEP_BUDGET_EXHAUSTED "after 1
+              # model attempt(s)", i.e. the single attempt was still in progress
+              # and healthy when the STEP budget ran out.
               max_seconds: 2700
+              step_budget_seconds: 3600
               # The leased browser (to SEE) plus the file host rooted at out_dir
               # (to READ the brief and REWRITE the candidate).
               tools:
