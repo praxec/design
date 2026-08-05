@@ -160,8 +160,20 @@ workflows:
                    ask whether the rendered page actually delivers its INTENT —
                    not whether you followed its wording.
 
-                4. Rewrite the candidate file to fix what you found. Then look
-                   again to confirm you fixed it and broke nothing.
+                4. Rewrite the candidate file to fix what you found — WITH YOUR
+                   FILE-WRITE TOOL. Your file tools are ROOTED at your working
+                   directory, so use a RELATIVE path. Write the whole corrected
+                   document to EXACTLY this relative path, overwriting it:
+
+                     candidate-{{ $.workflow.input.candidate_id }}.html
+
+                   Describing the changes is NOT doing them. A deterministic
+                   check compares the file on disk against its pre-review
+                   snapshot; if you report a revision and the bytes are
+                   unchanged, your work is discarded as REVISION_NOT_WRITTEN.
+
+                   Then load the page again and confirm you fixed what you meant
+                   to and broke nothing.
 
                 THE ONE HARD RULE: **do not change a single word of the visible
                 copy.** Not a heading, not a label, not a caption. No additions,
