@@ -291,3 +291,19 @@ test("whitespace-only edits still count as changed — the check is bytes, not j
   assert.equal(out.changed, true);
   assert.equal(out.landed, true);
 });
+
+// The zero-write pass (#13) was not defiance — the reviewer was never told HOW
+// to write. cap.implement.generate-direction spells out tool, rooting and exact
+// relative path because it had to learn to; the review step said only "rewrite
+// the candidate file". These pin the parity.
+
+test("the review step names the write tool, the rooting and the exact path", () => {
+  assert.match(CAP, /WITH YOUR FILE-WRITE TOOL/);
+  assert.match(CAP, /ROOTED at your working directory, so use a RELATIVE path/);
+  assert.match(CAP, /candidate-\{\{ \$\.workflow\.input\.candidate_id \}\}\.html/);
+});
+
+test("the reviewer is warned that describing is not doing", () => {
+  assert.match(CAP, /Describing the changes is NOT doing them/);
+  assert.match(CAP, /REVISION_NOT_WRITTEN/);
+});
