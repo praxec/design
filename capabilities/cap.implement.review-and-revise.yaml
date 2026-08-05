@@ -129,7 +129,20 @@ workflows:
             executor:
               kind: agent
               affinity: design
+              # TWO DIFFERENT CLOCKS, and confusing them cost three runs.
+              #   max_seconds         — the per-model-CALL timeout.
+              #   step_budget_seconds — the TOTAL for the step across the whole
+              #                         chain-walk, DEFAULT 900.
+              # This step is an agentic session, not a call: navigate, screenshot,
+              # inspect at three viewports, check dark mode, read the brief, write
+              # the file, re-navigate, re-screenshot to confirm. Ten-plus model
+              # calls, each carrying screenshots into a growing multimodal
+              # context, at effort: high. Raising max_seconds alone did nothing —
+              # the run died at 900s with AGENT_STEP_BUDGET_EXHAUSTED "after 1
+              # model attempt(s)", i.e. the single attempt was still in progress
+              # and healthy when the STEP budget ran out.
               max_seconds: 2700
+              step_budget_seconds: 3600
               # The leased browser (to SEE) plus the file host rooted at out_dir
               # (to READ the brief and REWRITE the candidate).
               tools:
@@ -160,8 +173,20 @@ workflows:
                    ask whether the rendered page actually delivers its INTENT —
                    not whether you followed its wording.
 
-                4. Rewrite the candidate file to fix what you found. Then look
-                   again to confirm you fixed it and broke nothing.
+                4. Rewrite the candidate file to fix what you found — WITH YOUR
+                   FILE-WRITE TOOL. Your file tools are ROOTED at your working
+                   directory, so use a RELATIVE path. Write the whole corrected
+                   document to EXACTLY this relative path, overwriting it:
+
+                     candidate-{{ $.workflow.input.candidate_id }}.html
+
+                   Describing the changes is NOT doing them. A deterministic
+                   check compares the file on disk against its pre-review
+                   snapshot; if you report a revision and the bytes are
+                   unchanged, your work is discarded as REVISION_NOT_WRITTEN.
+
+                   Then load the page again and confirm you fixed what you meant
+                   to and broke nothing.
 
                 THE ONE HARD RULE: **do not change a single word of the visible
                 copy.** Not a heading, not a label, not a caption. No additions,

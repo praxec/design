@@ -142,6 +142,11 @@ workflows:
               # LONGER turn than a polygon wireframe. 900s truncated candidates
               # mid-write once the asset rule opened up.
               max_seconds: 2700
+              # The per-call timeout above is NOT the step ceiling; that is
+              # step_budget_seconds, default 900. Generation with real artwork and
+              # a finished page is several calls, so the raise in #4 was never
+              # actually in force.
+              step_budget_seconds: 2700
               # EXPLICIT file host rooted at the (absolute) out_dir so write_file /
               # read_file are ALWAYS granted. CompositeToolHost only exposes file
               # tools when the connection root is ABSOLUTE (file_tools.rs:361-369);
