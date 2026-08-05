@@ -307,3 +307,13 @@ test("the reviewer is warned that describing is not doing", () => {
   assert.match(CAP, /Describing the changes is NOT doing them/);
   assert.match(CAP, /REVISION_NOT_WRITTEN/);
 });
+
+// max_seconds is the per-CALL timeout; step_budget_seconds is the TOTAL for the
+// step and defaults to 900. Three runs were lost to that distinction — raising
+// max_seconds alone changed nothing, and the failure ("budget spent after 1
+// model attempt") read like a model problem rather than a config one.
+test("the agentic review step raises the STEP budget, not just the call timeout", () => {
+  assert.match(CAP, /step_budget_seconds: \d+/);
+  const budget = Number(CAP.match(/step_budget_seconds: (\d+)/)[1]);
+  assert.ok(budget > 900, `the default 900s is what cut this step off; got ${budget}`);
+});
