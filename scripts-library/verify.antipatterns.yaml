@@ -80,7 +80,11 @@ scripts:
       // hard-block an otherwise-distinctive candidate. FAIL SAFE: any severity NOT
       // in the known non-blocking set (incl. missing/unknown high-severity names)
       // counts as blocking, so a new severity can never silently pass the floor.
-      const NON_BLOCKING = new Set(["warning", "info", "notice"]);
+      // `advisory` is impeccable's mild STYLE tier (e.g. numbered-section-labels,
+      // kicker-above-heading) — a taste note, never a usability blocker; it belongs
+      // with warning/info/notice, NOT hard-blocked by the fail-safe (dogfood fix:
+      // an all-advisory candidate was wrongly collapsing the round).
+      const NON_BLOCKING = new Set(["warning", "info", "notice", "advisory"]);
       const isBlocking = (f) => !NON_BLOCKING.has(String((f && f.severity) || "").toLowerCase());
       const blocking = arr.filter(isBlocking);
       const warnings = arr.filter((f) => !isBlocking(f)).map((f) => ({

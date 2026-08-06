@@ -1,21 +1,23 @@
 # scripts-library/run.render-thumbnail.yaml
 #
-# ============================ STUB — Increment I ============================
-# The PRODUCTION render path is the browser MCP (spec §2 / §5 / §7): screenshot
-# each candidate via the QA-reused `browser` connection. That needs a live
-# browser server + lease and is therefore NOT offline. To keep the Increment-I
-# spine exercisable HEADLESS + OFFLINE, this stub emits a DETERMINISTIC SVG
-# placeholder thumbnail (clearly marked "stub thumbnail") instead of a real
-# screenshot. Swap `cap.run.render-thumbnail`'s executor for `kind: mcp`
-# (connection `browser`) in Increment II — see connections/browser.yaml.
+# ============================ REAL THUMBNAIL (browserful) ====================
+# The human contact sheet needs the ACTUAL rendered design, not a placeholder.
+# This shells out to the pack's shared REAL-PIXELS render primitive
+# (render-screenshot.mjs — the same Puppeteer install snapshot.mjs uses) to
+# capture a bounded PNG of the candidate, then emits the SAME `thumbnail` output
+# KEY the cap maps. Because the engine exposes no pack-dir scope, `scripts_dir`
+# (abs path to this pack's scripts-library/, holding render-screenshot.mjs) is
+# threaded in as an arg — exactly the seam score-axes / capture-incumbent use.
 # ===========================================================================
 #
-#   Args: [candidate_html, out_dir, candidate_id?]
+#   Args: [scripts_dir, candidate(url|file), out_dir, candidate_id?]
 #
-# Emits { thumbnail: { artifact, kind: "stub-svg", of: <candidate_html> } }.
-# Fail-fast (spec §5): exit 3 CANDIDATE_NOT_RENDERABLE when the candidate HTML
-# is absent OR does not look like parseable HTML (no <html/<!doctype/<body) —
-# a candidate you cannot render can never reach the human prune.
+# Emits { thumbnail: { id, artifact, of: <candidate> } } where `artifact` is the
+# ABSOLUTE path of the written PNG.
+# Fail-fast (spec §5): exit 3 CANDIDATE_NOT_RENDERABLE when the candidate is a
+# local file that is absent OR does not look like parseable HTML, when the
+# renderer cannot be spawned, or when it produces no pixels — a candidate you
+# cannot render can never reach the human prune.
 version: "1.0.0"
 scripts:
   run.render-thumbnail:
@@ -24,46 +26,71 @@ scripts:
     source: design
     body: |
       #!/usr/bin/env node
-      // STUB renderer (see file header). Deterministic, offline, no browser.
-      const { existsSync, readFileSync, mkdirSync, writeFileSync } = require("node:fs");
-      const { join, basename } = require("node:path");
+      // REAL renderer: wrap the pack's render-screenshot.mjs (Puppeteer PNG).
+      const { existsSync, mkdirSync, readFileSync } = require("node:fs");
+      const { join, basename, resolve } = require("node:path");
+      const { execFileSync } = require("node:child_process");
 
-      const candidate = process.argv[2];
-      const outDir = process.argv[3];
-      const id = process.argv[4] || (candidate ? basename(candidate).replace(/\.html?$/i, "") : "unknown");
+      const scriptsDir = process.argv[2];
+      const candidate = process.argv[3];
+      const outDir = process.argv[4];
+      const id = process.argv[5] || (candidate ? basename(candidate).replace(/\.html?$/i, "") : "unknown");
 
-      if (!candidate || !outDir) {
-        console.error(JSON.stringify({ error: "ARGS_UNSET", need: ["candidate_html", "out_dir"] }));
+      if (!scriptsDir || !candidate || !outDir) {
+        console.error(JSON.stringify({ error: "ARGS_UNSET", need: ["scripts_dir", "candidate", "out_dir"] }));
         process.exit(2);
       }
-      if (!existsSync(candidate)) {
-        console.error(JSON.stringify({
-          error: "CANDIDATE_NOT_RENDERABLE",
-          message: `candidate HTML does not exist: ${candidate}`,
-        }));
-        process.exit(3);
-      }
-      const html = readFileSync(candidate, "utf8");
-      if (!/<html|<!doctype|<body/i.test(html)) {
-        console.error(JSON.stringify({
-          error: "CANDIDATE_NOT_RENDERABLE",
-          message: `candidate does not parse as HTML: ${candidate}`,
-        }));
-        process.exit(3);
-      }
 
-      const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [, id])[1].trim();
-      const esc = (s) => String(s).replace(/[<&>]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
-        <rect width="320" height="200" fill="#f4f1ea" stroke="#111" stroke-width="8"/>
-        <text x="20" y="44" font-family="monospace" font-size="14" fill="#111">STUB THUMBNAIL</text>
-        <text x="20" y="72" font-family="monospace" font-size="12" fill="#333">${esc(title)}</text>
-        <text x="20" y="176" font-family="monospace" font-size="10" fill="#666">of ${esc(basename(candidate))}</text>
-      </svg>`;
+      // A URL is rendered live; a local artifact must exist AND parse as HTML
+      // (the offline candidate contract — a candidate you can't render can't
+      // reach the human prune).
+      const isUrl = /^https?:\/\//i.test(candidate);
+      if (!isUrl) {
+        if (!existsSync(candidate)) {
+          console.error(JSON.stringify({
+            error: "CANDIDATE_NOT_RENDERABLE",
+            message: `candidate does not exist: ${candidate}`,
+          }));
+          process.exit(3);
+        }
+        const html = readFileSync(candidate, "utf8");
+        if (!/<html|<!doctype|<body/i.test(html)) {
+          console.error(JSON.stringify({
+            error: "CANDIDATE_NOT_RENDERABLE",
+            message: `candidate does not parse as HTML: ${candidate}`,
+          }));
+          process.exit(3);
+        }
+      }
 
       mkdirSync(outDir, { recursive: true });
-      const artifact = join(outDir, `thumb-${id}.svg`);
-      writeFileSync(artifact, svg);
+      const artifact = resolve(join(outDir, `thumb-${id}.png`));
+      const renderer = join(scriptsDir, "render-screenshot.mjs");
+
+      let out;
+      try {
+        // fold @ 1000px: a faithful-but-compact viewport view for the sheet grid.
+        const raw = execFileSync("node", [renderer, candidate, artifact, "fold", "1000"], {
+          encoding: "utf8",
+          maxBuffer: 16 * 1024 * 1024,
+        });
+        out = JSON.parse(String(raw).trim().split("\n").pop());
+      } catch (e) {
+        console.error(JSON.stringify({
+          error: "CANDIDATE_NOT_RENDERABLE",
+          message: `render-screenshot spawn failed: ${String((e && e.message) || e)}`,
+        }));
+        process.exit(3);
+      }
+      if (!out || out.ok !== true || !existsSync(artifact)) {
+        console.error(JSON.stringify({
+          error: "CANDIDATE_NOT_RENDERABLE",
+          message: "render produced no pixels",
+          detail: out,
+        }));
+        process.exit(3);
+      }
+
       console.log(JSON.stringify({
-        thumbnail: { artifact, kind: "stub-svg", of: candidate },
+        thumbnail: { id, artifact, of: candidate },
       }));

@@ -1,0 +1,55 @@
+# scripts-library/run.render-image.yaml
+#
+# The SELF-CHECK render leaf: render ONE candidate HTML to a real, size-bounded
+# PNG the design model then SEES (fed back as an image message-part) so it can
+# critique how its own candidate actually renders and close the gap. A thin bash
+# wrapper over the shared render primitive (render-screenshot.mjs), threading the
+# pack's own scripts_dir in (the engine exposes no pack-directory scope, so the
+# orchestrator passes it as `scripts_dir` — same seam inspect.score-axes uses).
+#
+# Renders in "full 1000" mode — the model should see the WHOLE design at a
+# compact, token-bounded width, not just the fold.
+#
+#   Args: [scripts_dir, input_html, out_dir, candidate_id]
+#     scripts_dir   absolute path to this pack's scripts-library/ (holds render-screenshot.mjs)
+#     input_html    the candidate HTML file (or URL) to render
+#     out_dir       directory to write the self-check PNG into (the run's artifacts dir)
+#     candidate_id  stable id — the PNG is selfcheck-<id>.png
+#
+# NEVER CRASHES (always exit 0): a failed render is NOT a hard error — it just
+# yields NO self-check image, and the refine step degrades to references-only
+# (the images: entry rendering to "" is simply skipped by the engine). Emits:
+#   { "image": "<abs png path>" }   on a successful render
+#   { "image": "" }                 on any failure (unresolved puppeteer, render error)
+version: "1.0.0"
+scripts:
+  run.render-image:
+    verb: run
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      INPUT_HTML="${2:-}"
+      OUT_DIR="${3:-}"
+      CANDIDATE_ID="${4:-}"
+
+      OUT_PNG="$OUT_DIR/selfcheck-$CANDIDATE_ID.png"
+
+      # A missing input can't be rendered — no self-check image (not a crash).
+      if [ -z "$INPUT_HTML" ] || [ -z "$SCRIPTS_DIR" ] || [ -z "$OUT_DIR" ]; then
+        printf '{"image":""}\n'
+        exit 0
+      fi
+
+      # Render the WHOLE design at a compact, token-bounded width. render-screenshot.mjs
+      # itself always exits 0 and prints { ok, out, bytes } — we route on `ok`.
+      RESULT="$(node "$SCRIPTS_DIR/render-screenshot.mjs" "$INPUT_HTML" "$OUT_PNG" full 1000 2>/dev/null || true)"
+
+      if printf '%s' "$RESULT" | grep -q '"ok":true'; then
+        printf '{"image":"%s"}\n' "$OUT_PNG"
+      else
+        printf '{"image":""}\n'
+      fi
+      exit 0

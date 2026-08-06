@@ -116,7 +116,10 @@ print(json.dumps({"definitionId": sys.argv[1], "input": {
 eval "$(pc "$HAPPY_INPUT" | WORK="$WORK" REPO1="$REPO1" python3 -c '
 import sys,json,os
 d=json.load(sys.stdin); w=d.get("workflow",{}); c=d.get("context",{})
-rolled=c.get("rolled",[]) or []
+# IV-b fan-in: `rolled` is the parallel fan-out result — each element is a branch
+# ENVELOPE {ok, index, output}. The per-surface record lives under output.rolled
+# and the adherent flag under output.adherent (one branch = one surface).
+recs=[b.get("output",{}) for b in (c.get("rolled",[]) or []) if b.get("ok")]
 toks=c.get("tokens",{}) or {}
 # stash the captured token contract for the on-disk adherence re-check.
 open(os.environ["WORK"]+"/tokens.json","w").write(json.dumps(toks))
@@ -126,14 +129,14 @@ print("HSTATUS=%r"    % (d.get("result") or {}).get("status"))
 print("HREASON=%r"    % c.get("reason"))
 print("HCOUNT=%r"     % c.get("rolled_count"))
 print("HNTOK=%r"      % len(toks.get("colors",[])))
-print("HALLADHERE=%r" % (bool(rolled) and all(r.get("adherent") is True for r in rolled)))
-print("HIDS=%r"       % " ".join(r.get("id","") for r in rolled))
+print("HALLADHERE=%r" % (bool(recs) and all(r.get("adherent") is True for r in recs)))
+print("HIDS=%r"       % " ".join(r.get("rolled",{}).get("id","") for r in recs))
 # coding-write-evidence: every collected surface is a real file on disk.
-print("HARTSOK=%r"    % (bool(rolled) and all(os.path.exists(r.get("artifact","")) for r in rolled)))
+print("HARTSOK=%r"    % (bool(recs) and all(os.path.exists(r.get("rolled",{}).get("artifact","")) for r in recs)))
 # edit-in-place: every artifact is the file at its OWN repo path (repo_root/file),
 # NOT an out_dir artifact.
-print("HINPLACE=%r"   % (bool(rolled) and all(
-  r.get("artifact","") == os.path.join(repo, r.get("file","")) for r in rolled)))
+print("HINPLACE=%r"   % (bool(recs) and all(
+  r.get("rolled",{}).get("artifact","") == os.path.join(repo, r.get("rolled",{}).get("file","")) for r in recs)))
 ')"
 [ "$HSTATE" = "done" ]              || fail "expected happy state=done, got $HSTATE"
 [ "$HSTATUS" = "succeeded" ]        || fail "expected happy status=succeeded, got $HSTATUS"
@@ -181,39 +184,48 @@ print(json.dumps({"definitionId": sys.argv[1], "input": {
 eval "$(pc "$REGRESS_INPUT" | REPO2="$REPO2" python3 -c '
 import sys,json,os
 d=json.load(sys.stdin); w=d.get("workflow",{}); c=d.get("context",{})
-off=c.get("off_system",[]) or []
-rolled=c.get("rolled",[]) or []
+# IV-b fan-in: only the OK branches carry a rolled record. A regressed surface
+# ends its branch `failed`, so it folds up as `fail_count` (the anti-regression
+# reduce) — its per-surface off_system detail lives in that failed branch, not in
+# the parent context. We assert the fold here + re-prove off-system ON DISK below.
+recs=[b.get("output",{}) for b in (c.get("rolled",[]) or []) if b.get("ok")]
 repo=os.environ["REPO2"]
 print("RSTATE=%r"   % w.get("state"))
 print("RSTATUS=%r"  % (d.get("result") or {}).get("status"))
 print("RREASON=%r"  % c.get("reason"))
 print("RCOUNT=%r"   % c.get("rolled_count"))
-print("ROFFN=%r"    % len(off))
-print("RKINDS=%r"   % ",".join(sorted({o.get("kind","") for o in off})))
-print("RHASCOLOR=%r"% any(o.get("kind")=="color" and "123456" in str(o.get("value","")) for o in off))
-print("RHASFONT=%r" % any(o.get("kind")=="font" and "Inter" in str(o.get("value","")) for o in off))
-print("RROLLEDIDS=%r" % " ".join(r.get("id","") for r in rolled))
+print("RFAIL=%r"    % c.get("fail_count"))
+print("RROLLEDIDS=%r" % " ".join(r.get("rolled",{}).get("id","") for r in recs))
 # the collected adherent surface is edited in place at its own repo path.
-print("RINPLACE=%r" % (bool(rolled) and all(
-  r.get("artifact","") == os.path.join(repo, r.get("file","")) for r in rolled)))
-# off_system shape: every finding carries kind + value + line.
-print("RSHAPEOK=%r" % (bool(off) and all(set(["kind","value","line"]).issubset(o) for o in off)))
-print("RSAMPLE=%r"  % json.dumps(off[:3]))
+print("RINPLACE=%r" % (bool(recs) and all(
+  r.get("rolled",{}).get("artifact","") == os.path.join(repo, r.get("rolled",{}).get("file","")) for r in recs)))
 ')"
 [ "$RSTATE" = "failed" ]              || fail "expected regressed state=failed, got $RSTATE"
 [ "$RSTATUS" = "failed" ]            || fail "expected regressed status=failed, got $RSTATUS"
 [ "$RREASON" = "ROLLOUT_REGRESSED" ] || fail "expected reason=ROLLOUT_REGRESSED, got $RREASON"
 [ "$RCOUNT" -eq 1 ] 2>/dev/null      || fail "adherent surface must still collect (rolled_count=1), got $RCOUNT"
-[ "$ROFFN" -ge 1 ] 2>/dev/null       || fail "off_system must name >=1 offending token, got $ROFFN"
-[ "$RHASCOLOR" = "True" ]            || fail "off_system must flag the off-palette #123456 color"
-[ "$RHASFONT" = "True" ]             || fail "off_system must flag the off-stack Inter font"
-[ "$RSHAPEOK" = "True" ]             || fail "each off_system finding must carry {kind,value,line}"
+[ "$RFAIL" -eq 1 ] 2>/dev/null        || fail "the off-system surface must fold through failed_count=1, got $RFAIL"
 [ "$RROLLEDIDS" = "ok-landing" ]     || fail "only the adherent surface should be collected, got [$RROLLEDIDS]"
 [ "$RINPLACE" = "True" ]             || fail "the collected surface must be edited at repo_root/<surface.file>"
 # the drifted fixture was still edited IN PLACE (exists, non-empty) — it just failed the gate.
 [ -s "$REPO2/src/styles/global.css" ] || fail "the drifted fixture must still have been edited in place"
-echo "   adherent 'ok-landing' edited in place + collected; 'drifted' FAILED token-adherence (kinds=$RKINDS) → ROLLOUT_REGRESSED  ✓"
-echo "   off_system shape: $RSAMPLE"
+# off_system detail now lives per-branch (a failed branch folds only failed_count
+# up). Re-prove the offending color + font by re-checking the drifted file ON DISK
+# (stronger than a context echo) via the SAME token-adherence core the gate uses.
+DRIFT_OFF=$(node "$SCRIPTS_DIR/token-adherence.mjs" "$REPO2/src/styles/global.css" "$WORK/tokens.json" | python3 -c '
+import sys,json
+d=json.load(sys.stdin); off=d.get("off_system",[]) or []
+kinds=",".join(sorted({o.get("kind","") for o in off}))
+hascolor=any(o.get("kind")=="color" and "123456" in str(o.get("value","")) for o in off)
+hasfont=any(o.get("kind")=="font" and "Inter" in str(o.get("value","")) for o in off)
+shapeok=bool(off) and all(set(["kind","value","line"]).issubset(o) for o in off)
+print("%s|%s|%s|%s|%s" % (kinds, hascolor, hasfont, shapeok, len(off)))')
+IFS="|" read RKINDS RHASCOLOR RHASFONT RSHAPEOK ROFFN <<< "$DRIFT_OFF"
+[ "$RHASCOLOR" = "True" ]            || fail "the drifted file on disk must flag the off-palette #123456 color"
+[ "$RHASFONT" = "True" ]             || fail "the drifted file on disk must flag the off-stack Inter font"
+[ "$RSHAPEOK" = "True" ]             || fail "each off_system finding must carry {kind,value,line}"
+echo "   adherent 'ok-landing' edited in place + collected; 'drifted' FAILED token-adherence (kinds=$RKINDS, n=$ROFFN)"
+echo "   → folded through failed_count=1 → ROLLOUT_REGRESSED  ✓"
 
 echo
 echo "DRIVE OK — capture → per-surface apply(stub, EDIT IN PLACE at repo_root/<file>) → token-adherence"

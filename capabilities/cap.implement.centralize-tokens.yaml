@@ -1,0 +1,188 @@
+# capabilities/cap.implement.centralize-tokens.yaml
+#
+# ==================== REAL CENTRALIZE — spec §4b ===========================
+# The CENTRALIZE leaf of the rollout spine — the keystone that turns "consistent
+# snowflakes" (values re-pasted into every page) into ONE shared source of truth
+# (defined once, consumed everywhere). Modeled EXACTLY on cap.implement.apply-
+# design-system. Supersedes the offline stub (design/cap.run.centralize-tokens) —
+# that stub is KEPT as the offline test substrate; this cap NEVER falls back to it.
+# If the model call fails, this cap FAILS FAST (no silent stub substitution).
+#
+# WHAT IT DOES:
+#   centralize = `kind: agent` bound to the **rollout affinity** (→ deepseek via the
+#   operator's models.yaml, swappable in one line) running the hash-pinned
+#   `implement.centralize-tokens` skill over the captured token contract → READS the
+#   target repo's central stylesheet (repo_root/<token_target>) and REWRITES it IN
+#   PLACE so the contract lives THERE as CSS custom properties in `:root` (colors →
+#   palette hexes, fonts → the stack, scale → the type scale) and the shared classes
+#   in that file CONSUME them via `var(--...)`. Preserves the file's existing
+#   selectors/structure/logic; only the token DEFINITIONS + their consumption change.
+#   Runs ONCE, BEFORE the per-surface fan-out, so every page later CONSUMES the
+#   central tokens rather than re-declaring them.
+#
+# ENGINE GROUNDING (V-rules, mirrors cap.implement.apply-design-system):
+#   - VERB (V1/V6): the COGNITIVE verb `implement` (real, model-driven edit).
+#   - AGENT PRIMARY (V6): `kind: agent` is NOT a legal INITIAL-state primary, so the
+#     initial state is a `noop` prep gate and the agent step lives in the SECOND
+#     state (`centralizing`).
+#   - AFFINITY: `affinity: rollout` — resolved against the operator's models.yaml.
+#   - MODELS.YAML: any `kind: agent` step makes `gateway.models_yaml` a hard
+#     requirement at check + serve (AGENT_MODELS_YAML_REQUIRED).
+#
+# FAIL-FAST TOKENS_NOT_CENTRALIZED (coding-write-evidence discipline): the agent's
+# own claim is NOT trusted. `requires_file_write: true` refuses an agent turn with
+# zero real write_file calls; then a DETERMINISTIC verifier (verify.tokens-
+# centralized) re-opens the EDITED central stylesheet at its own repo path
+# (repo_root/<token_target>) and confirms it exists + is a real, non-empty file.
+# Never a stub, never a fabricated pass.
+workflows:
+  cap.implement.centralize-tokens:
+    verb: implement
+    lifecycle: experimental
+    tags: [design, rollout, commodity, token-adherence, centralize, deepseek]
+    description: >
+      REAL centralize: a `kind: agent` step bound to the `rollout` affinity (→
+      deepseek, swappable) runs the hash-pinned implement.centralize-tokens skill
+      over the captured token contract and EDITS the target repo's central stylesheet
+      IN PLACE (repo_root/<token_target>) so the contract lives THERE as `:root` CSS
+      custom properties and the shared classes CONSUME them via `var(--...)` —
+      preserving the file's existing selectors/structure/logic. The single source of
+      truth every page later consumes. Fail-fast TOKENS_NOT_CENTRALIZED when no real,
+      non-empty file was written in place (no fallback to the stub).
+    snippet:
+      inputs:
+        # Absolute path to the target repo whose central stylesheet is EDITED IN PLACE.
+        repo_root: { type: string, required: true }
+        # The target-repo-RELATIVE path of the ONE central token source (stylesheet)
+        # that becomes the single source of truth.
+        token_target: { type: string, required: true }
+        # The captured token contract { colors, fonts, scale } as a JSON object.
+        tokens:  { type: object, required: true }
+        # Optional retry attempt number (carried into the record).
+        attempt: { type: integer, default: 0 }
+      outputs:
+        centralized: { type: object }
+    initialState: preparing
+    initialContext:
+      centralized_ok: false
+      centralized:    {}
+      reason:         ""
+    states:
+
+      # V6-legal initial primary (noop): a prep gate so the agent step is not the
+      # initial-state transition. Routes straight into centralize.
+      preparing:
+        goal: Prepare to centralize the captured design system into one token source.
+        transitions:
+          prepare:
+            target: centralizing
+            actor: deterministic
+            executor: { kind: noop }
+
+      # THE REAL CENTRALIZE STEP. `kind: agent` + rollout affinity + the pinned skill
+      # (in scope at state level → assembled as the system message). The goal (the
+      # task/user message) injects the token contract and the exact central file path.
+      # requires_file_write makes a zero-write turn a loud failure.
+      centralizing:
+        skills: [implement.centralize-tokens]
+        goal: >
+          Centralize the approved design system into ONE token source (single
+          source of truth).
+        transitions:
+          centralize:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: rollout
+              requires_file_write: true
+              max_seconds: 900
+              # EXPLICIT file host rooted at the (absolute) repo_root so read_file /
+              # write_file / edit_file are ALWAYS granted over the TARGET REPO.
+              # Absolute root ⇒ real file tools; a relative/empty root yields NO file
+              # tools → AGENT_NO_FILE_WRITES. The agent reads + rewrites the repo's
+              # own central stylesheet.
+              tools:
+                - "file:{{ $.workflow.input.repo_root }}"
+              owned_files:
+                - "{{ $.workflow.input.token_target }}"
+              goal: >
+                EDIT the target repo's central stylesheet IN PLACE so it becomes the
+                SINGLE SOURCE OF TRUTH for the approved design system. Your file tools
+                are ROOTED at the target repo — use RELATIVE paths. FIRST read the
+                existing central file, THEN rewrite that SAME file in place (write_file
+                / edit_file to the SAME relative path). The file to edit is EXACTLY:
+
+                  {{ $.workflow.input.token_target }}
+
+                WRITE GUARD (a failed run otherwise): Edit ONLY the single file
+                named in this task (the token target). You MUST NOT modify
+                package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, any
+                astro.config.*, tsconfig*, or any other build/config/dependency
+                file, and you MUST NOT run any package manager or add
+                dependencies. Touching any file other than your one target is a
+                failed run.
+
+                Define the token contract THERE as CSS custom properties in a
+                `:root { … }` block — one property per token: colors → `--<token>:
+                <hex>;`, fonts → a `--font-body` set to the stack, scale → `--fs-N:
+                <px>;`. Then rewrite the shared component classes IN THIS FILE to
+                CONSUME those custom properties via `var(--...)` (e.g. `color:
+                var(--ink)`) instead of hardcoded hex/font literals.
+
+                Use ONLY this token contract — its palette hexes and font stack are a
+                CLOSED set; a deterministic gate will BLOCK any off-system color or
+                font on the pages that later consume these tokens:
+                  tokens = {{ $.workflow.input.tokens }}
+
+                PRESERVE the file's existing selectors, structure, comments, imports,
+                and logic — change ONLY the token DEFINITIONS and the shared classes'
+                CONSUMPTION of them. Do NOT duplicate the token values into pages
+                (the pages consume from HERE). Rewrite the file, then stop — the
+                edited central stylesheet on disk, holding the contract as `:root`
+                custom properties, is the deliverable, not a description of it. A
+                described-but-unwritten edit is a FAILURE.
+            output:
+              agent_report: "$.output"
+
+      # DETERMINISTIC verify (coding-write-evidence): recompute the artifact path and
+      # confirm a real, non-empty central stylesheet was written. Emits the
+      # `centralized` record + a `centralized_ok` flag the gate routes on.
+      verifying:
+        goal: Verify the agent wrote a real central token stylesheet in place.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.tokens-centralized
+              args:
+                - "$.workflow.input.repo_root"
+                - "$.workflow.input.token_target"
+                - "$.workflow.input.attempt"
+            output:
+              centralized_ok: "$.output.json.centralized_ok"
+              centralized:    "$.output.json.centralized"
+              reason:         "$.output.json.reason"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.centralized_ok == true" }
+          not_centralized:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.centralized_ok != true" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

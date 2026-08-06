@@ -1,0 +1,83 @@
+# scripts-library/verify.tokens-centralized.yaml
+#
+# The coding-write-evidence VERIFIER for the REAL centralize cap
+# (design/cap.implement.centralize-tokens). The centralize agent's own claim is
+# NOT trusted: this deterministic step re-opens the EDITED central stylesheet at
+# its own repo path (repo_root/<token_target>) and confirms a real, non-empty file
+# was written IN PLACE. It is the fail-fast TOKENS_NOT_CENTRALIZED gate — the
+# symmetric counterpart of the fan-out's verify.surface-rolled. The per-surface
+# token-adherence gate runs SEPARATELY in the flow.rollout orchestrator; this leaf
+# only proves the central token file exists + is non-empty (it is `.css`).
+#
+#   Args: [repo_root, token_target, attempt?]
+#     repo_root     absolute path to the target repo the agent edited in place
+#     token_target  the target-repo-RELATIVE path of the central token stylesheet
+#     attempt       optional retry attempt (carried into the record)
+#   The artifact path is repo_root/<token_target> (the edited file at its own path).
+#
+# Emits (ALWAYS exit 0 — routing is done by the cap's verify_gate on `centralized_ok`):
+#   { centralized_ok: true,  centralized: { id, artifact, file, generator, attempt }, reason: "" }
+#   { centralized_ok: false, centralized: {},                                         reason: "TOKENS_NOT_CENTRALIZED" }
+# Only a genuinely missing arg is a hard error (exit 2): a missing/empty central
+# file is a first-class NOT_CENTRALIZED verdict, not a crash.
+version: "1.0.0"
+scripts:
+  verify.tokens-centralized:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic centralized-token-file verifier. No LLM, no network.
+      const { existsSync, readFileSync } = require("node:fs");
+      const { join, isAbsolute } = require("node:path");
+
+      const repoRoot = process.argv[2];
+      if (!repoRoot) {
+        console.error(JSON.stringify({ error: "REPO_ROOT_UNSET" }));
+        process.exit(2);
+      }
+      const rel = process.argv[3] || "";
+      const attempt = parseInt(process.argv[4] || "0", 10) || 0;
+      // The edited file is at its OWN repo path (repo_root/<token_target>) — the
+      // agent rewrote it in place, not into an out_dir.
+      const artifact = isAbsolute(rel) ? rel : join(repoRoot, rel);
+
+      const notCentralized = (message) =>
+        console.log(JSON.stringify({
+          centralized_ok: false,
+          centralized: {},
+          reason: "TOKENS_NOT_CENTRALIZED",
+          message,
+        }));
+
+      // 0. No relative path ⇒ nothing could have been centralized in place.
+      if (!rel) {
+        notCentralized("no token_target (repo-relative path) to centralize into");
+        process.exit(0);
+      }
+      // 1. The central file must actually exist (a described-but-unwritten edit).
+      if (!existsSync(artifact)) {
+        notCentralized(`central token file was not written in place: ${artifact}`);
+        process.exit(0);
+      }
+      // 2. It must be a real, non-empty stylesheet (an empty/whitespace-only file
+      //    is a failed centralization).
+      const source = readFileSync(artifact, "utf8");
+      if (source.trim().length === 0) {
+        notCentralized(`central token file is empty: ${artifact}`);
+        process.exit(0);
+      }
+      // Centralized — emit the record. `artifact` is the edited central stylesheet
+      // at its own repo path.
+      console.log(JSON.stringify({
+        centralized_ok: true,
+        reason: "",
+        centralized: {
+          id: "central-tokens",
+          artifact,
+          file: rel,
+          generator: "centralize-agent (rollout affinity → deepseek)",
+          attempt,
+        },
+      }));

@@ -1,33 +1,39 @@
 # capabilities/cap.run.render-thumbnail.yaml
 #
-# ============================ STUB — Increment I ============================
-# Spec §2/§5/§7 "cap.render.thumbnail". PRODUCTION is the browser MCP (reused
-# from QA): screenshot each candidate via the leased `browser` connection
-# (see connections/browser.yaml). That needs a live browser server + lease and
-# is NOT offline. To keep the Increment-I spine headless + offline, this cap is
-# STUB-BACKED: it emits a deterministic SVG placeholder thumbnail (clearly
-# marked "stub thumbnail"), NOT a real screenshot. In Increment II swap this
-# state's executor for `kind: mcp` (connection `browser`, tool
-# browser.screenshot) — V6 permits mcp for a Deterministic verb.
+# ============================ REAL THUMBNAIL (browserful) ====================
+# Spec §2/§5/§7 "cap.render.thumbnail". Emits a REAL screenshot of the candidate
+# for the human contact sheet (no longer a placeholder) by wrapping the pack's
+# shared render primitive (render-screenshot.mjs, Puppeteer PNG). Because the
+# engine exposes no pack-dir scope, `scripts_dir` (abs path to this pack's
+# scripts-library/) is threaded in as an input — the same seam
+# cap.inspect.score-axes / cap.inspect.capture-incumbent use.
 # ===========================================================================
 #
 # Renamed from `cap.render.thumbnail`: the cap verb cloud (SPEC §4) has no
-# `render` verb; `run` is the honest blessed verb for the offline stub.
+# `render` verb; `run` is the honest blessed verb.
 #
 # V6: `run` is Deterministic → primary `kind: script`. Fail-fast (spec §5):
-# `CANDIDATE_NOT_RENDERABLE` when the candidate HTML is absent or unparseable.
+# `CANDIDATE_NOT_RENDERABLE` when a local candidate is absent/unparseable, when
+# the renderer cannot spawn, or when it produces no pixels.
 workflows:
   cap.run.render-thumbnail:
     verb: run
     lifecycle: experimental
     description: >
-      STUB (Increment I): emit a deterministic SVG placeholder thumbnail for a
-      candidate so the spine runs offline. Fail-fast CANDIDATE_NOT_RENDERABLE
-      when the candidate HTML does not exist or does not parse. Production path
-      is the browser MCP screenshot (connection `browser`).
+      Render a REAL bounded-PNG thumbnail of a candidate (url or local HTML file)
+      via the pack's render-screenshot.mjs Puppeteer primitive, so the human
+      contact sheet shows the actual design. Fail-fast CANDIDATE_NOT_RENDERABLE
+      when a local candidate is absent/unparseable or the render yields no pixels.
     snippet:
       inputs:
-        # Path to the candidate HTML to render (from cap.run.generate-direction).
+        # Absolute path to this pack's scripts-library/ (holds render-screenshot.mjs).
+        # The engine has no pack-dir scope, so the caller passes it explicitly.
+        # OPTIONAL (default "") — a caller that omits it fails FAST at runtime
+        # (ARGS_UNSET) rather than drifting the offline variant's contract at check
+        # time (V30's sanctioned resolution). The real spine always threads it.
+        scripts_dir:  { type: string, default: "" }
+        # Path to the candidate HTML to render (from cap.implement.generate-direction),
+        # or a live URL (the incumbent baseline snapshot path).
         candidate:    { type: string, required: true }
         # Directory to write the thumbnail into (created if absent).
         out_dir:      { type: string, required: true }
@@ -38,7 +44,7 @@ workflows:
     initialState: rendering
     states:
       rendering:
-        goal: Emit a thumbnail ref for the candidate (stub SVG, offline).
+        goal: Emit a real PNG thumbnail ref for the candidate.
         transitions:
           render:
             target: done
@@ -47,6 +53,7 @@ workflows:
               kind: script
               subject: run.render-thumbnail
               args:
+                - "$.workflow.input.scripts_dir"
                 - "$.workflow.input.candidate"
                 - "$.workflow.input.out_dir"
                 - "$.workflow.input.candidate_id"

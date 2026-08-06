@@ -64,6 +64,19 @@ workflows:
         # candidate renders the same words and the only variable is the design.
         # Empty ⇒ representative content for the app type (Increment-I default).
         content_path: { type: string, default: "" }
+        # OPTIONAL aesthetic direction (from cap.research.direction). The overall
+        # taste/register the candidate should serve (e.g. "enterprise, trustworthy,
+        # calm; institutional not boutique"), SEPARATE from the hard structural
+        # seed — the seed carries geometry, this carries feel. "" ⇒ no extra
+        # guidance (the seed + profile alone govern; pre-front-end behavior).
+        direction_brief: { type: string, default: "" }
+        # OPTIONAL visual references (praxec 0.0.48+ governed image inputs): a JSON
+        # array STRING of image paths — reference-site screenshots + operator
+        # moodboard images — the generation agent SEES (not just reads DNA about).
+        # Flattened into image message-parts by the engine. "" / "[]" ⇒ no images
+        # (text-only, pre-vision behavior). The design affinity model must be
+        # vision-capable (kimi-k3 is).
+        reference_images_json: { type: string, default: "" }
       outputs:
         candidate: { type: object }
     initialState: preparing
@@ -112,6 +125,11 @@ workflows:
                 - "file:{{ $.workflow.input.out_dir }}"
               owned_files:
                 - "{{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html"
+              # Governed VISUAL references (0.0.48+): one array-valued entry the
+              # engine flattens into image message-parts — the agent SEES the
+              # reference screenshots/moodboard while it designs. Empty ⇒ no images.
+              images:
+                - "{{ $.workflow.input.reference_images_json }}"
               goal: >
                 Generate ONE UI-design direction as a single self-contained,
                 renderable HTML file and WRITE it with your file-write tool. Your
@@ -128,6 +146,20 @@ workflows:
 
                 Serve the app's core needs (fit-for-purpose):
                   profile = {{ $.workflow.input.profile }}
+
+                Serve this overall AESTHETIC DIRECTION (the taste/register/feel —
+                honor it alongside the hard seed; the seed sets geometry, this sets
+                tone). If empty, let the seed + profile govern:
+                  direction = {{ $.workflow.input.direction_brief }}
+
+                If IMAGES are attached to this message, they are VISUAL REFERENCES
+                (screenshots of sites/moodboards the direction points to — some to
+                emulate the register of, and, if the direction says so, some to
+                surpass or avoid). Study them: their palette, type register, layout
+                structure, density, and trust signals inform your composition. Do
+                NOT copy any one of them; synthesize the direction they collectively
+                imply, expressed through THIS candidate's hard seed. If none are
+                attached, rely on the direction text + seed.
 
                 If a content source is named below, it is a file in your working
                 directory holding the page's REAL copy (headings, body, labels,

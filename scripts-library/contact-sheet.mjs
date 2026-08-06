@@ -51,6 +51,43 @@ const hrefFrom = (outDir, p) => {
   return esc(rel || abs);
 };
 
+// SELF-CONTAINED sheet: embed a thumbnail as a base64 data URI so contact-sheet.html
+// is ONE portable file — double-click / move / open from anywhere, thumbnails never
+// break on a relative-path miss. Only known RASTER image extensions are embedded;
+// anything else (e.g. an .html stand-in in tests, or an .svg) returns "" and the
+// caller falls back to the relative href (unchanged behaviour). Unreadable ⇒ "" ⇒
+// fall back too — presentation is best-effort, never fatal.
+const IMG_MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" };
+const thumbDataUri = (outDir, p) => {
+  if (!p) return "";
+  const abs = resolve(outDir, p); // absolute p ⇒ used as-is; relative ⇒ resolved under outDir
+  const dot = abs.lastIndexOf(".");
+  const mime = dot >= 0 ? IMG_MIME[abs.slice(dot).toLowerCase()] : undefined;
+  if (!mime) return "";
+  try {
+    return `data:${mime};base64,${readFileSync(abs).toString("base64")}`;
+  } catch {
+    return "";
+  }
+};
+
+// LIVE preview: embed the candidate's full HTML render as a data: URI so the sheet
+// shows the ACTUAL design — animations play, and clicking opens it full-size to
+// interact — instead of a static thumbnail. Only .html renders embed; anything else
+// returns "" and the caller falls back to the thumbnail image. Unreadable ⇒ "" too.
+const renderDataUri = (outDir, p) => {
+  if (!p) return "";
+  const abs = resolve(outDir, p);
+  const dot = abs.lastIndexOf(".");
+  const ext = dot >= 0 ? abs.slice(dot).toLowerCase() : "";
+  if (ext !== ".html" && ext !== ".htm") return "";
+  try {
+    return `data:text/html;base64,${readFileSync(abs).toString("base64")}`;
+  } catch {
+    return "";
+  }
+};
+
 // Quality-flags (Increment I-e): the non-blocking `warnings` carried on the
 // record — findings that did NOT gate the candidate but the human should see.
 // Dedup by antipattern name, keeping a count, so 7× `cramped-padding` shows as
@@ -73,13 +110,27 @@ const fitScoreOf = (c) => {
   return null;
 };
 
-export function buildContactSheet(candidates, outDir) {
+// A baseline record is present when it is a non-empty object carrying an id or a
+// full render artifact (the incumbent snapshot). An empty {} (no incumbent_url)
+// is absent — the sheet then renders the generated spread alone, unchanged.
+const baselinePresent = (b) => !!(b && typeof b === "object" && (b.id || b.artifact));
+
+export function buildContactSheet(candidates, outDir, baseline) {
+  // NO_CANDIDATES_TO_PRUNE stays keyed to the GENERATED set — the baseline is a
+  // reference, never a substitute for having something to prune.
   if (!Array.isArray(candidates) || candidates.length === 0) {
     throw new Error("NO_CANDIDATES_TO_PRUNE");
   }
   if (!outDir) throw new Error("OUT_DIR_UNSET");
 
-  const cells = candidates
+  // Prepend the incumbent baseline as candidate-0 (marked so the cell badges it
+  // BASELINE) when present, so the human prunes the fresh directions AGAINST what
+  // exists today. It does NOT change the generated `candidates.length` header/count.
+  const spread = baselinePresent(baseline)
+    ? [Object.assign({}, baseline, { __baseline: true }), ...candidates]
+    : candidates;
+
+  const cells = spread
     .map((c, i) => {
       const id = c.id || `candidate-${i}`;
       const name = c.name || id;
@@ -97,19 +148,33 @@ export function buildContactSheet(candidates, outDir) {
             .join("")}</div>`
         : "";
       const render = hrefFrom(outDir, fullRenderOf(c));
-      const thumb = hrefFrom(outDir, thumbOf(c));
-      const thumbImg = thumb
-        ? `<img class="thumb" src="${thumb}" alt="thumbnail of ${esc(id)}" loading="lazy">`
-        : `<div class="thumb thumb--missing">no thumbnail</div>`;
+      const isBaseline = c && (c.__baseline === true || c.baseline === true);
+      // LIVE preview of the actual design (animations/interactions) via a scaled
+      // iframe embedding the candidate HTML; the incumbent BASELINE is a captured
+      // screenshot, so it (and any non-HTML render) falls back to the embedded thumb.
+      const renderData = isBaseline ? "" : renderDataUri(outDir, fullRenderOf(c));
+      const thumbSrc = thumbDataUri(outDir, thumbOf(c)) || hrefFrom(outDir, thumbOf(c));
+      const openOverlay = render
+        ? `<a class="preview-open" href="${render}" target="_blank" rel="noopener" title="open full — interact at real size"></a>`
+        : "";
+      const preview = renderData
+        ? `<div class="preview live-wrap">${openOverlay}<iframe class="live" src="${renderData}" title="live preview of ${esc(id)}" scrolling="no" loading="lazy"></iframe></div>`
+        : (thumbSrc
+            ? `<div class="preview">${openOverlay}<img class="thumb" src="${thumbSrc}" alt="preview of ${esc(id)}" loading="lazy"></div>`
+            : `<div class="preview"><div class="thumb thumb--missing">no preview</div></div>`);
       const renderLink = render
         ? `<a class="render-link" href="${render}" target="_blank" rel="noopener">Open full render →</a>`
         : `<span class="render-link render-link--missing">render missing</span>`;
-      return `      <figure class="cell" data-candidate-id="${esc(id)}">
-        ${thumbImg}
+      const baselineBadge = isBaseline
+        ? `<span class="badge badge--baseline" title="the CURRENT live design, captured as a reference — prune the fresh directions against it">BASELINE</span>`
+        : "";
+      return `      <figure class="cell${isBaseline ? " cell--baseline" : ""}" data-candidate-id="${esc(id)}"${isBaseline ? ' data-baseline="true"' : ""}>
+        ${preview}
         <figcaption>
           <div class="cell-id">${esc(id)}</div>
           <div class="cell-name">${esc(name)}</div>
           <div class="badges">
+            ${baselineBadge}
             <span class="badge badge--advisory badge--g" title="distinctiveness G — advisory only, you decide">G ${esc(gBadge)}</span>
             <span class="badge badge--advisory badge--fit" title="fit-for-purpose score — advisory only, you decide">fit ${esc(fitBadge)}</span>
           </div>
@@ -137,14 +202,22 @@ export function buildContactSheet(candidates, outDir) {
   .verdicts code { padding: .05rem .35rem; border: 1px solid currentColor; border-radius: .2rem; }
   main.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; padding: 1.5rem; }
   .cell { margin: 0; border: 1px solid currentColor; border-radius: .4rem; overflow: hidden; display: flex; flex-direction: column; }
-  .thumb { display: block; width: 100%; height: 180px; object-fit: cover; background: #f4f1ea; }
-  .thumb--missing { display: flex; align-items: center; justify-content: center; color: #999; font-size: .8rem; }
+  .preview { position: relative; width: 100%; height: 200px; overflow: hidden; border-bottom: 1px solid currentColor; background: #fff; }
+  .live-wrap { height: 216px; } /* JS resizes to fit width; this is the pre-JS fallback */
+  .live { position: absolute; top: 0; left: 0; width: 1280px; height: 800px; border: 0; background: #fff; transform-origin: top left; transform: scale(.27); pointer-events: none; }
+  .preview-open { position: absolute; inset: 0; z-index: 3; display: block; }
+  .preview-open:focus-visible { outline: 3px solid #2456c9; outline-offset: -3px; }
+  .thumb { display: block; width: 100%; height: 200px; object-fit: cover; object-position: top center; background: #f4f1ea; }
+  .thumb--missing { height: 200px; display: flex; align-items: center; justify-content: center; color: #999; font-size: .8rem; }
   figcaption { padding: .6rem .75rem; display: flex; flex-direction: column; gap: .35rem; }
   .cell-id { font-family: ui-monospace, monospace; font-weight: 600; font-size: .9rem; }
   .cell-name { font-size: .78rem; opacity: .8; }
   .badges { display: flex; gap: .4rem; flex-wrap: wrap; }
   .badge { font-family: ui-monospace, monospace; font-size: .72rem; padding: .1rem .45rem; border-radius: .8rem; border: 1px solid currentColor; }
   .badge--advisory { opacity: .65; border-style: dashed; }
+  .badge--baseline { font-weight: 700; letter-spacing: .04em; border-style: solid; background: #111; color: #f4f1ea; }
+  @media (prefers-color-scheme: dark) { .badge--baseline { background: #f4f1ea; color: #111; } }
+  .cell--baseline { border-width: 2px; box-shadow: inset 0 0 0 1px currentColor; }
   .quality-flags { display: flex; gap: .3rem; flex-wrap: wrap; }
   .flag { font-family: ui-monospace, monospace; font-size: .68rem; padding: .05rem .4rem; border-radius: .8rem; border: 1px dashed #b8860b; color: #8a6d00; }
   @media (prefers-color-scheme: dark) { .flag { color: #e0b84a; border-color: #e0b84a; } }
@@ -155,12 +228,31 @@ export function buildContactSheet(candidates, outDir) {
 <body>
 <header>
   <h1>Prune &amp; steer — ${candidates.length} eligible direction${candidates.length === 1 ? "" : "s"}</h1>
-  <p>Every direction below already cleared the one hard floor — real usability (detect-clean, zero blocking findings). The G and fit badges are <strong>advisory only</strong> (dashed): a crude structural proxy, never a gate. You are the fitness function: compare side-by-side, then for each candidate give a verdict and say what you like / dislike — those reasons steer the next spread.</p>
+  <p>Every direction below already cleared the one hard floor — real usability (detect-clean, zero blocking findings). The G and fit badges are <strong>advisory only</strong> (dashed): a crude structural proxy, never a gate. You are the fitness function: compare side-by-side, then for each candidate give a verdict and say what you like / dislike — those reasons steer the next spread. <strong>Previews are live</strong> — animations play; click any preview to open it full-size and interact.</p>
   <p class="verdicts">Verdicts: <code>keep</code> survive · <code>branch</code> make variations · <code>compose</code> recombine · <code>reject</code> drop the lineage. Keep exactly one as the survivor to refine; note likes/dislikes per candidate.</p>
 </header>
 <main class="grid">
 ${cells}
 </main>
+<script>
+  // Scale each live preview to fit its cell width (design is authored at 1280×800).
+  (function () {
+    var VW = 1280, VH = 800;
+    function fit() {
+      var wraps = document.querySelectorAll(".live-wrap");
+      for (var i = 0; i < wraps.length; i++) {
+        var w = wraps[i], f = w.querySelector(".live");
+        if (!f) continue;
+        var s = w.clientWidth / VW;
+        f.style.transform = "scale(" + s + ")";
+        w.style.height = (VH * s) + "px";
+      }
+    }
+    document.addEventListener("DOMContentLoaded", fit);
+    window.addEventListener("load", fit);
+    window.addEventListener("resize", fit);
+  })();
+</script>
 </body>
 </html>
 `;
@@ -172,16 +264,19 @@ ${cells}
 }
 
 // ----------------------------------------------------------------------------
-// CLI: node contact-sheet.mjs <candidates_json_or_path> <out_dir>
+// CLI: node contact-sheet.mjs <candidates_json_or_path> <out_dir> [baseline_json]
 //   arg1 accepts EITHER an inline JSON string (how the engine renders an array
 //   arg — object/array script args are stringified, same as cap.inspect.collect-
 //   candidate's eligible_in) OR a path to a .json file (CLI/fixture convenience).
+//   arg3 (optional) is the incumbent BASELINE record as a JSON string ({} = none);
+//   when non-empty it is prepended as candidate-0 with a BASELINE badge.
 //   Prints { contact_sheet: { artifact } } on stdout.
 // ----------------------------------------------------------------------------
 const isMain = resolve(process.argv[1] || "") === resolve(new URL(import.meta.url).pathname);
 if (isMain) {
   const candidatesArg = process.argv[2];
   const outDir = process.argv[3];
+  const baselineArg = process.argv[4];
   if (!candidatesArg || !outDir) {
     console.error(JSON.stringify({ error: "ARGS_UNSET", need: ["candidates_json_or_path", "out_dir"] }));
     process.exit(2);
@@ -194,8 +289,18 @@ if (isMain) {
     console.error(JSON.stringify({ error: "CANDIDATES_UNPARSEABLE" }));
     process.exit(2);
   }
+  // Baseline is OPTIONAL: absent/blank/unparseable ⇒ {} (no baseline), never fatal.
+  let baseline = {};
+  if (baselineArg) {
+    try {
+      const rawB = existsSync(baselineArg) ? readFileSync(baselineArg, "utf8") : baselineArg;
+      baseline = JSON.parse(rawB);
+    } catch {
+      baseline = {};
+    }
+  }
   try {
-    const out = buildContactSheet(candidates, outDir);
+    const out = buildContactSheet(candidates, outDir, baseline);
     console.log(JSON.stringify(out));
   } catch (e) {
     if (e && e.message === "NO_CANDIDATES_TO_PRUNE") {

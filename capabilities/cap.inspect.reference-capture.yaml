@@ -1,0 +1,72 @@
+# capabilities/cap.inspect.reference-capture.yaml
+#
+# ================= REFERENCE GATHERING — spec §4 (front-door grounding) =================
+# Before the front-end derives seeds, GROUND the run in what the references
+# ACTUALLY look like. Operators point at external reference URLs + drop in internal
+# moodboard images; this cap captures them into ONE visual set (bounded reference
+# screenshots + validated moodboard images) plus the measured structural DNA of the
+# reference sites — then hands BOTH to research (and, later, generation) so seeds are
+# grounded in fact, not a name the model has to guess from.
+#
+# ENGINE GROUNDING (V-rules, verified against praxec source + the sibling
+# cap.inspect.score-axes):
+#   - VERB (V1/V6): the DETERMINISTIC introspection verb `inspect` — read-only,
+#     structured factual result (screenshots + DNA), no model in the loop. A
+#     Deterministic verb's primary executor must be `kind: script` (V6), which this
+#     is; no `noop` prep gate is needed (unlike the cognitive agent caps).
+#   - SCRIPTS_DIR: the engine exposes no pack-directory scope, so the absolute path
+#     to this pack's scripts-library/ (holding reference-capture.mjs + the helpers it
+#     reuses) is threaded in as an input the orchestrator/operator supplies.
+#
+# reference_images_json is a STRING (JSON array of abs paths) on purpose: it flows
+# through the engine `images:` array-flatten on the downstream research/generation
+# agent steps, becoming N image message-parts the model SEES.
+workflows:
+  cap.inspect.reference-capture:
+    verb: inspect
+    lifecycle: experimental
+    tags: [design, references, moodboard, grounding, screenshots, dna]
+    description: >
+      Capture the operator's external reference URLs (→ bounded screenshots) and
+      internal moodboard images (→ validated) into one visual set, plus the measured
+      structural DNA of the reference sites — grounding the front-end in what the
+      references actually look like. Wraps the reference-capture.mjs core (which
+      reuses the pack's render-screenshot.mjs + reference-dna.mjs). A single bad
+      ref/image is skipped with a note, never a crash.
+    snippet:
+      inputs:
+        # Absolute path to this pack's scripts-library/ (holds the helpers).
+        # The engine has no pack-dir scope, so the caller passes it explicitly.
+        scripts_dir:     { type: string, required: true }
+        # Directory to write ref-<name>.png screenshots into (the run's artifacts dir).
+        out_dir:         { type: string, required: true }
+        # JSON array STRING of { name, url } external references ("[]" = none).
+        reference_urls:  { type: string, default: "[]" }
+        # JSON array STRING of ABSOLUTE moodboard image paths ("[]" = none).
+        internal_images: { type: string, default: "[]" }
+      outputs:
+        # JSON array STRING of abs image paths (ref screenshots THEN moodboard) —
+        # a STRING so it flows through the engine `images:` array-flatten.
+        reference_images_json: { type: string }
+        # Measured structural DNA text of the reference sites ("" = no refs).
+        reference_dna:         { type: string }
+    initialState: capturing
+    states:
+      capturing:
+        goal: Capture reference screenshots + moodboard images + reference DNA.
+        transitions:
+          capture:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.reference-capture
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.reference_urls"
+                - "$.workflow.input.internal_images"
+                - "$.workflow.input.out_dir"
+            output:
+              reference_images_json: "$.output.json.reference_images_json"
+              reference_dna:         "$.output.json.reference_dna"
+      done: { terminal: true }

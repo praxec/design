@@ -1,0 +1,70 @@
+# capabilities/cap.inspect.capture-incumbent.yaml
+#
+# ============== THE INCUMBENT-AS-BASELINE SEAM (existing design as alternative) ==============
+# "Look at the current design as one of the alternatives." Captures an EXISTING
+# live site into a scored candidate the human sees on the contact sheet as the
+# BASELINE, so fresh directions are pruned AGAINST what exists today. General: any
+# incumbent, any run — the target URL is the input, nothing site-specific lives here.
+#
+# ENGINE GROUNDING:
+#   - VERB (V6): `inspect` is Deterministic → primary is `kind: script` (the
+#     inspect.capture-incumbent bash wrapper over snapshot.mjs). No agent, no LLM.
+#   - scripts_dir threaded in (the engine exposes no pack-dir scope), exactly like
+#     cap.inspect.score-axes threads it for score.mjs.
+#
+# The capture result is a first-class verdict: `captured` false with a `reason`
+# (never a crash). The ORCHESTRATOR decides fail-fast vs proceed — this cap only
+# reports. The emitted candidate matches the generator contract { id, artifact,
+# seed, generator } so downstream score/detect/contact-sheet is identical.
+workflows:
+  cap.inspect.capture-incumbent:
+    verb: inspect
+    lifecycle: experimental
+    tags: [design, incumbent, baseline, snapshot]
+    description: >
+      Capture an existing live site (by URL) as a self-contained snapshot candidate
+      in the same feature space as generated candidates, so it can be scored,
+      usability-checked, and shown on the human contact sheet as the BASELINE
+      alternative. Wraps the pack's snapshot.mjs (Puppeteer). Reports `captured`
+      + the candidate object; a capture failure is a verdict, not a crash.
+    snippet:
+      inputs:
+        # Absolute path to this pack's scripts-library/ (holds snapshot.mjs).
+        scripts_dir:  { type: string, required: true }
+        # The live URL of the existing design to capture.
+        url:          { type: string, required: true }
+        # Directory to write the snapshot candidate HTML into.
+        out_dir:      { type: string, required: true }
+        # Stable id → candidate-<id>.html (default "incumbent").
+        candidate_id: { type: string, default: "incumbent" }
+      outputs:
+        captured:  { type: boolean }
+        candidate: { type: object }
+        reason:    { type: string }
+    initialState: capturing
+    initialContext:
+      captured:  false
+      candidate: {}
+      reason:    ""
+    states:
+      capturing:
+        goal: Capture the existing site as a baseline snapshot candidate.
+        transitions:
+          capture:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.capture-incumbent
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.url"
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.candidate_id"
+            output:
+              captured:  "$.output.json.captured"
+              candidate: "$.output.json.candidate"
+              reason:    "$.output.json.reason"
+      done:
+        terminal: true
+        outcome: success
