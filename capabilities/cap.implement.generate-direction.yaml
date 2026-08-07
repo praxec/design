@@ -81,9 +81,12 @@ workflows:
         candidate: { type: object }
     initialState: preparing
     initialContext:
-      renderable: false
-      candidate:  {}
-      reason:     ""
+      assets_ok:   false
+      renderable:  false
+      candidate:   {}
+      reason:      ""
+      content_ok:  false
+      content_rel: ""
     states:
 
       # V6-legal initial primary (noop): a prep gate so the agent step is not the
@@ -92,9 +95,45 @@ workflows:
         goal: Prepare to generate one candidate for the seed.
         transitions:
           prepare:
-            target: generating
+            target: checking_content
             actor: deterministic
             executor: { kind: noop }
+
+      # PREFLIGHT (D8): resolve content_path against the agent's file host BEFORE
+      # spending a frontier generation on it. The agent cannot distinguish an
+      # unreadable content source from an absent one — its prompt falls back to
+      # representative copy for both — so a stated-but-unreadable source silently
+      # produced an UNGROUNDED candidate that passed every downstream check.
+      # Deterministic code makes that distinction; the agent never gets to.
+      checking_content:
+        goal: Confirm the named content source is actually readable by the agent.
+        transitions:
+          check:
+            target: content_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.content-source
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.content_path"
+            output:
+              content_ok:  "$.output.json.content_ok"
+              content_rel: "$.output.json.content_rel"
+              reason:      "$.output.json.reason"
+
+      content_gate:
+        transitions:
+          ok:
+            target: generating
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.content_ok == true" }
+          unreadable:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.content_ok != true" }
 
       # THE REAL GENERATION STEP. `kind: agent` + design affinity + the pinned
       # skill (in scope at state level → assembled as the system message). The
@@ -112,7 +151,15 @@ workflows:
               kind: agent
               affinity: design
               requires_file_write: true
-              max_seconds: 900
+              # Real artwork + real type + a finished (not sketched) page is a
+              # LONGER turn than a polygon wireframe. 900s truncated candidates
+              # mid-write once the asset rule opened up.
+              max_seconds: 2700
+              # The per-call timeout above is NOT the step ceiling; that is
+              # step_budget_seconds, default 900. Generation with real artwork and
+              # a finished page is several calls, so the raise in #4 was never
+              # actually in force.
+              step_budget_seconds: 2700
               # EXPLICIT file host rooted at the (absolute) out_dir so write_file /
               # read_file are ALWAYS granted. CompositeToolHost only exposes file
               # tools when the connection root is ABSOLUTE (file_tools.rs:361-369);
@@ -161,19 +208,40 @@ workflows:
                 imply, expressed through THIS candidate's hard seed. If none are
                 attached, rely on the direction text + seed.
 
-                If a content source is named below, it is a file in your working
-                directory holding the page's REAL copy (headings, body, labels,
-                CTAs, in order). READ it with your file-read tool using its
-                RELATIVE path and lay out EXACTLY that copy — do not invent, add,
-                reorder, or drop content; the words are fixed, the DESIGN is
-                yours. If it is empty, use representative content for the app type.
+                If the content source line below is NON-EMPTY, that file has
+                ALREADY BEEN VERIFIED to exist and be readable at that path,
+                relative to your working directory. READ it with your file-read
+                tool and lay out EXACTLY that copy — do not invent, add, reorder,
+                or drop content; the words are fixed, the DESIGN is yours. If you
+                cannot read it, STOP and say so — do NOT substitute content of
+                your own; an ungrounded candidate is worse than no candidate.
+                Only when the line below is EMPTY is there no content source, and
+                only then should you use representative content for the app type.
                   content source: {{ $.workflow.input.content_path }}
 
                 Be distinctive — do NOT emit the generic default (Inter + dark
                 gradient + rounded cards + centered symmetric grid). Express the
-                seed's DNA in real compositional geometry. Inline ALL CSS; no
-                external fonts/styles/scripts/images. Write the file, then stop —
-                the file on disk is the deliverable, not a description of it.
+                seed's DNA in real compositional geometry.
+
+                Inline ALL CSS. Make NO NETWORK REQUESTS — no CDN stylesheets,
+                no webfont services, no remote images or scripts; the page must
+                render with the network unplugged. But LOCAL FILES ALREADY IN
+                YOUR WORKING DIRECTORY ARE NOT EXTERNAL: if imagery or font
+                files are present, USE THEM via relative paths. Real artwork and
+                real type are what separate a design from a wireframe; do not
+                substitute inline <svg> shape-assemblies for a real image that
+                is sitting in the same folder.
+
+                Use the MODERN platform: semantic HTML5, CSS grid, custom
+                properties, aspect-ratio/object-fit, clamp(), :has(), container
+                queries, CSS animation, prefers-color-scheme and
+                prefers-reduced-motion. Inline <script> is allowed for
+                behaviour, but the page must be COMPLETE WITHOUT IT — the
+                scorer reads the STATIC DOM and CSS, so anything you build in
+                JavaScript is invisible to it and scores as absent.
+
+                Write the file, then stop — the file on disk is the deliverable,
+                not a description of it.
             output:
               agent_report: "$.output"
 
@@ -202,7 +270,7 @@ workflows:
       verify_gate:
         transitions:
           ok:
-            target: done
+            target: checking_assets
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.renderable == true" }
@@ -211,6 +279,40 @@ workflows:
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.renderable != true" }
+
+      # ASSET REFERENCES (#4 made local assets legal; nothing checked them).
+      # A candidate that references files which are not there renders as a page
+      # full of broken-image icons while parsing perfectly — observed live, and
+      # carried four generations toward a human before anyone noticed. A network
+      # reference is the same class: it renders here and fails everywhere else,
+      # including in the headless screenshotter.
+      checking_assets:
+        goal: Confirm every referenced asset is a local file that exists.
+        transitions:
+          check:
+            target: assets_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.assets-resolve
+              args:
+                - "{{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html"
+            output:
+              assets_ok: "$.output.json.assets_ok"
+              reason:    "$.output.json.reason"
+
+      assets_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.assets_ok == true" }
+          broken:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.assets_ok != true" }
 
       done:
         terminal: true

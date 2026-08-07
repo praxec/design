@@ -51,6 +51,9 @@ workflows:
         # The eligible candidate records (each { id, name, G, fit, thumbnail, artifact }).
         candidates:    { type: array,  required: true }
         # The pre-built contact sheet ref ({ artifact }) from inspect.build-contact-sheet.
+        # It is ONE local self-contained contact-sheet.html (each candidate embedded
+        # as a data: URI iframe), so the human opens it directly off disk — no server,
+        # no loopback URL, no remote round-trip.
         contact_sheet: { type: object, required: true }
         prompt:        { type: string, default: "Prune and steer: keep/branch/compose/reject each, and say what you like/dislike." }
       outputs:

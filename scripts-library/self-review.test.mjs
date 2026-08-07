@@ -1,0 +1,319 @@
+// self-review.test.mjs — the deterministic guard around visual self-review.
+//
+// Letting the generator look at its own page and rewrite the file is the single
+// largest quality lever available (every candidate so far was designed blind).
+// It is also the point where a model is most likely to "improve" the WORDS —
+// and the content source is the one thing held constant so that DESIGN is the
+// only variable between candidates. A revision that edits copy has changed the
+// experiment, not the design.
+//
+// So the boundary is deterministic, not an instruction the model is trusted to
+// follow. These tests pin it: what a design change may do (reorder, restyle,
+// re-mark-up, swap classes, change images) and what it may not (add, drop or
+// reword a single visible word) — plus the rollback that keeps a rejected
+// revision from costing the human a candidate.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync, writeFileSync, mkdtempSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+function bodyRunner(yamlName) {
+  const raw = readFileSync(join(HERE, yamlName), "utf8");
+  const lines = raw.split("\n");
+  const i = lines.findIndex((l) => /^\s*body:\s*\|\s*$/.test(l));
+  assert.ok(i >= 0, `no 'body: |' block in ${yamlName}`);
+  const indent = lines[i].match(/^(\s*)/)[1].length + 2;
+  const out = [];
+  for (let k = i + 1; k < lines.length; k++) {
+    const l = lines[k];
+    if (l.trim() === "") { out.push(""); continue; }
+    if (l.match(/^(\s*)/)[1].length < indent) break;
+    out.push(l.slice(indent));
+  }
+  const file = join(mkdtempSync(join(tmpdir(), "sr-")), yamlName.replace(/\.yaml$/, ".js"));
+  writeFileSync(file, out.join("\n"));
+  return file;
+}
+
+const COPY = bodyRunner("verify.copy-preserved.yaml");
+const SNAP = bodyRunner("run.snapshot-candidate.yaml");
+const RESTORE = bodyRunner("run.restore-candidate.yaml");
+
+function checkCopy(beforeHtml, afterHtml) {
+  const dir = mkdtempSync(join(tmpdir(), "sr-copy-"));
+  const b = join(dir, "before.html");
+  const a = join(dir, "after.html");
+  writeFileSync(b, beforeHtml);
+  writeFileSync(a, afterHtml);
+  return JSON.parse(execFileSync("node", [COPY, b, a], { encoding: "utf8" }));
+}
+
+const PAGE = `<!doctype html><html><head><style>.x{color:red}</style></head><body>
+  <h1 class="hero">Hello, Rosa</h1>
+  <p>A couple of things first, and then you can make a story.</p>
+  <img src="art/plate-growth-field.png" alt="a field">
+  <!-- a comment -->
+  <script>console.log("not copy")</script>
+</body></html>`;
+
+// --- what a DESIGN change is allowed to do ---------------------------------
+
+test("restyling only is preserved — CSS is not copy", () => {
+  const after = PAGE.replace(".x{color:red}", ".x{color:blue;font-size:2rem}");
+  assert.equal(checkCopy(PAGE, after).copy_preserved, true);
+});
+
+test("re-marking-up and re-ordering is preserved — that IS layout", () => {
+  const after = `<!doctype html><html><body>
+    <section><p>A couple of things first, and then you can make a story.</p></section>
+    <header><h1>Hello, Rosa</h1></header>
+    <figure><img src="art/plate-growth-field.png" alt="a field"></figure>
+  </body></html>`;
+  assert.equal(checkCopy(PAGE, after).copy_preserved, true);
+});
+
+test("swapping classes and image paths is preserved — attributes are not copy", () => {
+  const after = PAGE
+    .replace('class="hero"', 'class="masthead display"')
+    .replace("art/plate-growth-field.png", "art/plate-adventure-dragon.png");
+  assert.equal(checkCopy(PAGE, after).copy_preserved, true);
+});
+
+test("changing script contents is preserved — script bodies are not copy", () => {
+  const after = PAGE.replace('console.log("not copy")', 'document.title = "anything at all"');
+  assert.equal(checkCopy(PAGE, after).copy_preserved, true);
+});
+
+// --- what it is NOT allowed to do ------------------------------------------
+
+test("adding a caption the layout 'wants' is REVISION_ALTERED_COPY", () => {
+  const after = PAGE.replace("</body>", "<figcaption>The summer the tent leaked</figcaption></body>");
+  const out = checkCopy(PAGE, after);
+  assert.equal(out.copy_preserved, false);
+  assert.equal(out.reason, "REVISION_ALTERED_COPY");
+  assert.ok(out.added.includes("tent"), `expected the invented words to be reported, got ${out.added}`);
+});
+
+test("rewording a heading for 'clarity' is caught", () => {
+  const after = PAGE.replace("Hello, Rosa", "Welcome back, Rosa");
+  const out = checkCopy(PAGE, after);
+  assert.equal(out.copy_preserved, false);
+  assert.ok(out.added.includes("Welcome"));
+  assert.ok(out.removed.includes("Hello"));
+});
+
+test("quietly dropping copy that did not fit the new layout is caught", () => {
+  const after = PAGE.replace("<p>A couple of things first, and then you can make a story.</p>", "");
+  const out = checkCopy(PAGE, after);
+  assert.equal(out.copy_preserved, false);
+  assert.ok(out.removed.length > 0);
+  assert.equal(out.added.length, 0, "a pure deletion adds nothing");
+});
+
+test("a wholesale rewrite reports bounded lists but exact counts", () => {
+  const after = "<!doctype html><html><body><h1>Something else entirely</h1></body></html>";
+  const out = checkCopy(PAGE, after);
+  assert.equal(out.copy_preserved, false);
+  assert.ok(out.removed.length <= 40, "the report must not dump the whole page into the run context");
+  assert.ok(out.removed_count >= out.removed.length, "the count stays exact even when the list is capped");
+});
+
+// --- snapshot and rollback --------------------------------------------------
+
+test("snapshot copies the candidate aside and names both paths", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sr-snap-"));
+  writeFileSync(join(dir, "candidate-c1.html"), PAGE);
+  const out = JSON.parse(execFileSync("node", [SNAP, dir, "c1"], { encoding: "utf8" }));
+  assert.ok(existsSync(out.snapshot));
+  assert.equal(readFileSync(out.snapshot, "utf8"), PAGE);
+  assert.match(out.candidate, /candidate-c1\.html$/);
+});
+
+test("snapshotting a candidate that does not exist fails loudly", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sr-snap2-"));
+  assert.throws(() => execFileSync("node", [SNAP, dir, "missing"], { encoding: "utf8", stdio: "pipe" }));
+});
+
+test("restore puts the pre-review file back over a bad revision", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sr-rest-"));
+  const cand = join(dir, "candidate-c1.html");
+  writeFileSync(cand, PAGE);
+  const snap = JSON.parse(execFileSync("node", [SNAP, dir, "c1"], { encoding: "utf8" })).snapshot;
+  writeFileSync(cand, "<!doctype html><body>ruined</body>");
+  const out = JSON.parse(execFileSync("node", [RESTORE, snap, cand], { encoding: "utf8" }));
+  assert.equal(out.restored, true);
+  assert.equal(readFileSync(cand, "utf8"), PAGE, "the human's candidate is intact");
+});
+
+// Restore runs on a path that is ALREADY a failure. If it threw, a discarded
+// revision would become a lost candidate.
+test("restore degrades instead of throwing when there is no snapshot", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sr-rest2-"));
+  const out = JSON.parse(
+    execFileSync("node", [RESTORE, join(dir, "nope.html"), join(dir, "candidate-c1.html")], { encoding: "utf8" }),
+  );
+  assert.equal(out.restored, false);
+  assert.match(out.message, /no snapshot/);
+});
+
+// ---------------------------------------------------------------------------
+// THE REPORT CONTRACT. The first live review returned:
+//   { summary: "Saw the rendered page, found gaps, rewrote candidate-v3.html.",
+//     details: "See internal monologue." }
+// — a successful pass that told the human nothing. The observation is the ONLY
+// thing a screenshot buys that no CSS parser can produce; a bare
+// `review_report: "$.output"` let the model decline to provide it. These pin
+// the schema so the value cannot quietly evaporate again.
+// ---------------------------------------------------------------------------
+
+const CAP = readFileSync(
+  join(HERE, "..", "capabilities", "cap.implement.review-and-revise.yaml"),
+  "utf8",
+).replace(/\s+/g, " ");
+
+// The contract lives in the TASK, not in a required inputSchema. #9 put it in
+// the schema and broke the cap two ways: on a `kind: agent` executor the schema
+// validates the DISPATCHER's arguments, not the model's answer (the step became
+// unlaunchable), and a required agent report is the discard surface
+// cognitive/cap.implement.build-loop documents — "models WROTE a correct red
+// test but fumbled the sign-off -> verified work thrown away". The revised FILE
+// is the deliverable and it is already verified three ways; losing it over a
+// missing JSON field would trade the thing we want for the note about it.
+
+test("the review transition does NOT gate dispatch on a required schema", () => {
+  const reviewStep = CAP.slice(CAP.indexOf("review: target: verifying"), CAP.indexOf("verifying: goal:"));
+  assert.doesNotMatch(reviewStep, /required: \[/, "a required agent report discards good revisions");
+});
+
+test("the goal asks for the report shape in the words the model must answer in", () => {
+  assert.match(CAP, /"verdict": "revised" \| "no_change_needed"/);
+  assert.match(CAP, /"observations":/);
+  assert.match(CAP, /"changes":/);
+  assert.match(CAP, /"severity": "blocking" \| "notable" \| "minor"/);
+});
+
+// The point of a screenshot is the PICTURE. A report that describes the edit
+// ("adjusted object-fit") tells us nothing we could not read off the diff.
+test("the goal demands observations about the picture, not about the markup", () => {
+  assert.match(CAP, /must describe the PICTURE, not the markup/);
+  assert.match(CAP, /cropped through the child's face/);
+});
+
+test("no_change_needed is available, and inventing work is refused", () => {
+  assert.match(CAP, /no_change_needed/);
+  assert.match(CAP, /Do not invent work to look diligent/);
+});
+
+test("the revision is gated on asset retention, not only on copy", () => {
+  assert.match(CAP, /checking_assets/);
+  assert.match(CAP, /subject: verify\.assets-resolve/);
+  // The snapshot is the baseline — without it the check is vacuous.
+  assert.match(CAP, /args: - "\$\.context\.candidate" - "\$\.context\.snapshot"/);
+});
+
+test("a stripped-asset revision routes to restore, not to done", () => {
+  assert.match(CAP, /stripped: target: restoring/);
+});
+
+// ---------------------------------------------------------------------------
+// THE REPORT MUST MATCH THE DISK.
+//
+// Observed live: a review returned verdict "revised" with eight measured
+// observations ("the counts render at y=1418 on an 850px viewport") and eight
+// changes each traced to a numbered instruction — and wrote nothing. The
+// candidate was byte-identical to its own snapshot.
+//
+// Every guard passed, VACUOUSLY: renderable (it is the original), copy preserved
+// (identical), artwork retained (identical). All three constrain what a revision
+// MAY DO; none required that one HAPPENED.
+//
+// Not solved with `requires_file_write` — generation must always write, review
+// must not. "The page is already good" is a legitimate outcome the goal
+// explicitly invites, and refusing zero writes would turn the honest answer into
+// a failure. The check is "does what you SAID match what is THERE".
+// ---------------------------------------------------------------------------
+
+const LANDED = bodyRunner("verify.revision-landed.yaml");
+
+function landed(beforeHtml, afterHtml, report) {
+  const dir = mkdtempSync(join(tmpdir(), "sr-land-"));
+  const snap = join(dir, "candidate-c1.pre-review.html");
+  const cand = join(dir, "candidate-c1.html");
+  writeFileSync(snap, beforeHtml);
+  writeFileSync(cand, afterHtml);
+  return JSON.parse(
+    execFileSync("node", [LANDED, cand, snap, typeof report === "string" ? report : JSON.stringify(report)],
+      { encoding: "utf8" }),
+  );
+}
+
+test("claiming a revision while writing nothing is REVISION_NOT_WRITTEN", () => {
+  const out = landed(PAGE, PAGE, { verdict: "revised", changes: [{ changed: "lots", why: "reasons" }] });
+  assert.equal(out.landed, false);
+  assert.equal(out.reason, "REVISION_NOT_WRITTEN");
+  assert.equal(out.changed, false);
+});
+
+test("a real revision with a revised verdict lands", () => {
+  const out = landed(PAGE, PAGE.replace("</body>", "<footer>restyled</footer></body>"), { verdict: "revised" });
+  assert.equal(out.landed, true);
+  assert.equal(out.changed, true);
+});
+
+// The honest no-op must stay honest — this is why requires_file_write is wrong here.
+test("no_change_needed with an untouched file is a SUCCESS", () => {
+  const out = landed(PAGE, PAGE, { verdict: "no_change_needed", observations: [{ saw: "it reads well" }] });
+  assert.equal(out.landed, true);
+  assert.equal(out.changed, false);
+});
+
+test("no_change_needed while HAVING changed the file contradicts the disk", () => {
+  const out = landed(PAGE, PAGE.replace("Hello, Rosa", "<em>Hello, Rosa</em>"), { verdict: "no_change_needed" });
+  assert.equal(out.landed, false);
+  assert.equal(out.reason, "REPORT_CONTRADICTS_DISK");
+});
+
+// To claim "I looked and it is fine" you have to actually claim it. Silence plus
+// no work is not a successful review.
+test("a missing or unparseable verdict cannot excuse a zero-write pass", () => {
+  assert.equal(landed(PAGE, PAGE, {}).reason, "REVISION_NOT_WRITTEN");
+  assert.equal(landed(PAGE, PAGE, "See internal monologue.").reason, "REVISION_NOT_WRITTEN");
+});
+
+test("whitespace-only edits still count as changed — the check is bytes, not judgement", () => {
+  const out = landed(PAGE, PAGE + "\n", { verdict: "revised" });
+  assert.equal(out.changed, true);
+  assert.equal(out.landed, true);
+});
+
+// The zero-write pass (#13) was not defiance — the reviewer was never told HOW
+// to write. cap.implement.generate-direction spells out tool, rooting and exact
+// relative path because it had to learn to; the review step said only "rewrite
+// the candidate file". These pin the parity.
+
+test("the review step names the write tool, the rooting and the exact path", () => {
+  assert.match(CAP, /WITH YOUR FILE-WRITE TOOL/);
+  assert.match(CAP, /ROOTED at your working directory, so use a RELATIVE path/);
+  assert.match(CAP, /candidate-\{\{ \$\.workflow\.input\.candidate_id \}\}\.html/);
+});
+
+test("the reviewer is warned that describing is not doing", () => {
+  assert.match(CAP, /Describing the changes is NOT doing them/);
+  assert.match(CAP, /REVISION_NOT_WRITTEN/);
+});
+
+// max_seconds is the per-CALL timeout; step_budget_seconds is the TOTAL for the
+// step and defaults to 900. Three runs were lost to that distinction — raising
+// max_seconds alone changed nothing, and the failure ("budget spent after 1
+// model attempt") read like a model problem rather than a config one.
+test("the agentic review step raises the STEP budget, not just the call timeout", () => {
+  assert.match(CAP, /step_budget_seconds: \d+/);
+  const budget = Number(CAP.match(/step_budget_seconds: (\d+)/)[1]);
+  assert.ok(budget > 900, `the default 900s is what cut this step off; got ${budget}`);
+});

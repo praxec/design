@@ -193,6 +193,16 @@ export function buildContactSheet(candidates, outDir, baseline) {
 <title>Prune &amp; steer — ${candidates.length} eligible directions</title>
 <style>
   :root { color-scheme: light dark; }
+  /* The live preview renders the candidate at desktop width and scales it,
+     so what the human compares is the composition the design actually has —
+     a reflowed mobile stack would hide the layout being judged. */
+  .thumb--live { position: relative; overflow: hidden; width: 100%; aspect-ratio: 4 / 3;
+                 background: Canvas; border-bottom: 1px solid currentColor; }
+  .thumb-frame { position: absolute; top: 0; left: 0; width: 1440px; height: 1080px;
+                 border: 0; transform: scale(calc(1 / 3)); transform-origin: 0 0;
+                 pointer-events: none; }
+  @media (min-width: 1200px) { .thumb-frame { width: 1600px; height: 1200px;
+                 transform: scale(0.3); } }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.4; }
   header { padding: 1.25rem 1.5rem; border-bottom: 2px solid currentColor; }
