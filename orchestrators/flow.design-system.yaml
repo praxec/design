@@ -1,0 +1,225 @@
+# orchestrators/flow.design-system.yaml
+#
+# ==================== DESIGN-SYSTEM LIFECYCLE SPINE ==========================
+# ESTABLISH-OR-HONE the canonical ATOMIC design system for a target site. This flow
+# OWNS the design-system LIFECYCLE — it produces the canonical system but makes NO
+# page changes. It is SEPARATE from flow.rollout, which PROPAGATES/APPLIES an
+# already-blessed system across the pages (that refactor-to-compose is rollout's job,
+# LATER). Three stages:
+#
+#   1. AUDIT / DETECT (auditing) — deterministic, read-only. Scan the target repo's
+#      central stylesheet + component files into { exists, spacing_scale_present,
+#      adhoc_px, component_files, gaps }. `exists` is the heuristic: does a real
+#      atomic system already exist?
+#   2. BRANCH (detect_gate) — exists ⇒ mode=hone (a system is there, close its gaps);
+#      not-exists ⇒ mode=create (greenfield the atomic system from the approved
+#      design). The mode is set on a DEDICATED noop-executor state (an output
+#      mutation on a bare guard transition is NOT applied — flow.anneal's V2 fix).
+#   3. SYSTEMATIZE (systematizing) — a FRONTIER `design`-affinity agent writes the
+#      shared components + the spacing scale + design-system.md IN PLACE, branching on
+#      mode. A BARRIER (requires_file_write + a deterministic verifier). Makes NO page
+#      edits (WRITE GUARD in the cap).
+#   4. REVIEW (reviewing) — a HITL gate: the human approves / revises / rejects the
+#      proposed system before it is blessed as canonical. The flow PARKS here.
+#
+# OUTPUT: the canonical system — the path to design-system.md, the component
+# inventory, and confirmation the spacing scale exists (the `canonical` record), plus
+# the human's bless verdict.
+#
+# GROUNDING: capture/repo_root/scripts_dir wiring mirrors flow.rollout; the HITL-park
+# composition (a `kind: workflow` sub-cap whose human leaf parks the parent) mirrors
+# flow.anneal.structure-first's `pruning` step.
+# ===========================================================================
+
+workflows:
+
+  flow.design-system:
+    lifecycle: experimental
+    # Establishing-or-honing an atomic system with a frontier agent is legitimately
+    # long; raise the default 30-min mission-deadline backstop (bounded 2h) — the
+    # requires_file_write verifier is the real governor.
+    missionDeadlineSecs: 7200
+    description: >
+      ESTABLISH-OR-HONE the canonical atomic design system for a target site: audit
+      the repo's stylesheet + components into deterministic signals, BRANCH on whether
+      a real atomic system already exists (create greenfield vs hone the gaps), have a
+      FRONTIER design-affinity agent write the shared components + a spacing scale +
+      design-system.md IN PLACE (a barrier, verified), then PARK for a human to
+      approve/revise/reject it as canonical. Owns the design-system LIFECYCLE — makes
+      NO page changes (propagating the system to pages is flow.rollout's job, later).
+    inputs:
+      # Absolute path to the TARGET REPO whose components + tokens + doc are written
+      # in place (and whose stylesheet + components are audited read-only).
+      repo_root:      { type: string,  required: true }
+      # The repo-relative central token source (stylesheet) the spacing SCALE lives in.
+      token_target:   { type: string,  default: "src/styles/global.css" }
+      # The repo-relative dir the shared component file(s) live under.
+      components_dir: { type: string,  default: "src/components" }
+      # The repo-relative path of the design-system.md inventory doc to write.
+      doc_target:     { type: string,  default: "design-system.md" }
+      # Absolute path to this pack's scripts-library/ (threaded to the script caps).
+      scripts_dir:    { type: string,  default: "" }
+      # OPTIONAL: the approved design (source of taste) the CREATE mode derives the
+      # atomic system from. "" ⇒ the agent derives from the repo's existing surfaces.
+      design_system_path: { type: string, default: "" }
+      # OPTIONAL (hone): repo-relative REFERENCE SURFACE whose treatment (line
+      # weights, section markers, column structure, heading style) is canonical —
+      # the shared components are honed UP to match it, not averaged down. "" ⇒
+      # keep the existing shared treatment.
+      reference_surface:  { type: string, default: "" }
+      # The chosen branch. Declared as an OPTIONAL input (default "") so V13 accepts
+      # systematizing's `use:.inputs` read of $.context.mode — the set_hone/set_create
+      # states OVERWRITE it via an output mutation (which V13 does not count as a
+      # slot-writer), so the input declaration is what satisfies V13 (the same seam
+      # flow.anneal.structure-first uses for its `baseline` slot).
+      mode:           { type: string,  default: "" }
+    outputs:
+      # The canonical system record: { doc, doc_file, spacing_scale_present,
+      # spacing_tokens, component_files, … } — the path to design-system.md + the
+      # component inventory + confirmation the spacing scale exists.
+      canonical: { type: object }
+      # The chosen branch (create | hone) — evidence.
+      mode:      { type: string }
+      # The human bless verdict.
+      blessed:   { type: boolean }
+      verdict:   { type: string }
+      reason:    { type: string }
+      notes:     { type: string }
+    # Seed every declared output (V24) + the loop/branch slots read before their
+    # first writer.
+    initialContext:
+      exists:                false
+      spacing_scale_present: false
+      adhoc_px:              []
+      near_duplicates:       []
+      component_files:       []
+      gaps:                  []
+      mode:                  ""
+      canonical:             {}
+      blessed:               false
+      verdict:               ""
+      reason:                ""
+      notes:                 ""
+    initialState: auditing
+    states:
+
+      # AUDIT / DETECT — deterministic, read-only. Parse the repo's stylesheet +
+      # components into the signal set the branch gate routes on (sub-instance;
+      # threads scripts_dir — the engine exposes no pack-dir scope).
+      auditing:
+        goal: Audit the target repo into the deterministic design-system signal set.
+        transitions:
+          audit:
+            target: detect_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.audit-design-system
+              use:
+                inputs:
+                  scripts_dir:    "$.workflow.input.scripts_dir"
+                  repo_root:      "$.workflow.input.repo_root"
+                  token_target:   "$.workflow.input.token_target"
+                  components_dir: "$.workflow.input.components_dir"
+                outputs:
+                  "$.context.exists":                exists
+                  "$.context.spacing_scale_present": spacing_scale_present
+                  "$.context.adhoc_px":              adhoc_px
+                  "$.context.near_duplicates":       near_duplicates
+                  "$.context.component_files":       component_files
+                  "$.context.gaps":                  gaps
+
+      # BRANCH on the heuristic `exists`: a real atomic system already exists ⇒ HONE
+      # (close the audited gaps); none ⇒ CREATE (greenfield from the approved design).
+      detect_gate:
+        transitions:
+          hone:
+            target: set_hone
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.exists == true" }
+          create:
+            target: set_create
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.exists != true" }
+
+      # SET MODE on dedicated noop-executor states (an output mutation on a bare guard
+      # transition is NOT applied — flow.anneal's V2 fix; the mode would stay "").
+      set_hone:
+        goal: Select HONE mode (an atomic system exists; close its gaps).
+        transitions:
+          set:
+            target: systematizing
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              mode: { set: "hone" }
+
+      set_create:
+        goal: Select CREATE mode (greenfield; establish the atomic system).
+        transitions:
+          set:
+            target: systematizing
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              mode: { set: "create" }
+
+      # SYSTEMATIZE — the BARRIER. A frontier `design`-affinity agent writes the shared
+      # components + the spacing scale + design-system.md IN PLACE (branching on mode),
+      # then a deterministic verifier proves the doc + scale actually landed. Makes NO
+      # page edits (WRITE GUARD in the cap). The review gate depends on this completing.
+      systematizing:
+        goal: Establish-or-hone the atomic design system (frontier design; barrier).
+        transitions:
+          systematize:
+            target: reviewing
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.implement.systematize-design-system
+              use:
+                inputs:
+                  repo_root:          "$.workflow.input.repo_root"
+                  mode:               "$.context.mode"
+                  token_target:       "$.workflow.input.token_target"
+                  components_dir:     "$.workflow.input.components_dir"
+                  doc_target:         "$.workflow.input.doc_target"
+                  design_system_path: "$.workflow.input.design_system_path"
+                  reference_surface:  "$.workflow.input.reference_surface"
+                  gaps:               "$.context.gaps"
+                  # Thread the STRUCTURED audit (locations!) so the systematize agent
+                  # goes straight to the exact { file, line } / { file, selector } sites
+                  # instead of burning turns searching a directory it cannot grep.
+                  adhoc_px:           "$.context.adhoc_px"
+                  near_duplicates:    "$.context.near_duplicates"
+                  scripts_dir:        "$.workflow.input.scripts_dir"
+                outputs:
+                  "$.context.canonical": systematized
+
+      # REVIEW — the HITL bless gate. Present the proposed system (design-system.md +
+      # component inventory + spacing scale) and PARK for the human to approve / revise
+      # / reject it as canonical. A sub-cap whose human leaf parks the parent (the same
+      # composition flow.anneal's `pruning` uses).
+      reviewing:
+        goal: Human approves/revises/rejects the proposed system as canonical (park).
+        transitions:
+          review:
+            target: done
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.gate.review-design-system
+              use:
+                inputs:
+                  proposed: "$.context.canonical"
+                outputs:
+                  "$.context.blessed": blessed
+                  "$.context.verdict": verdict
+                  "$.context.reason":  reason
+                  "$.context.notes":   notes
+
+      done:
+        terminal: true
+        outcome: success

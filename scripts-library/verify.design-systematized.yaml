@@ -1,0 +1,111 @@
+# scripts-library/verify.design-systematized.yaml
+#
+# The coding-write-evidence VERIFIER for the REAL systematize cap
+# (design/cap.implement.systematize-design-system). The systematize agent's own
+# claim is NOT trusted: this deterministic step re-opens what the agent was told to
+# write and proves the two canonical deliverables landed IN PLACE —
+#   1. the design-system.md inventory doc (repo_root/<doc_target>) is a real,
+#      non-empty file, and
+#   2. the central stylesheet (repo_root/<token_target>) now defines a real spacing
+#      SCALE (>= SCALE_MIN distinct --space-*/--gap-*/… custom properties — the
+#      same threshold the audit core uses; a single one-off var is not a scale).
+# It is the fail-fast DESIGN_NOT_SYSTEMATIZED gate — the symmetric counterpart of
+# the rollout spine's verify.tokens-centralized. The component inventory under
+# components_dir is collected as evidence (informational).
+#
+#   Args: [repo_root, token_target, components_dir, doc_target, attempt?]
+#     repo_root       absolute path to the target repo the agent edited in place
+#     token_target    repo-relative central stylesheet that must hold the scale
+#     components_dir  repo-relative shared-components dir (inventory evidence)
+#     doc_target      repo-relative path of the design-system.md inventory doc
+#     attempt         optional retry attempt (carried into the record)
+#
+# Emits (ALWAYS exit 0 — routing is done by the cap's verify_gate on `systematized_ok`):
+#   { systematized_ok: true,  systematized: { doc, spacing_scale_present, spacing_tokens, component_files, attempt }, reason: "" }
+#   { systematized_ok: false, systematized: {},                                                                       reason: "DESIGN_NOT_SYSTEMATIZED" }
+# Only a genuinely missing arg is a hard error (exit 2); a missing/empty doc or an
+# absent scale is a first-class NOT_SYSTEMATIZED verdict, not a crash.
+version: "1.0.0"
+scripts:
+  verify.design-systematized:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic design-system verifier. No LLM, no network.
+      const { existsSync, readFileSync, readdirSync, statSync } = require("node:fs");
+      const { join, isAbsolute, relative, extname } = require("node:path");
+
+      const repoRoot = process.argv[2];
+      if (!repoRoot) {
+        console.error(JSON.stringify({ error: "REPO_ROOT_UNSET" }));
+        process.exit(2);
+      }
+      const tokenTarget = process.argv[3] || "";
+      const componentsDir = process.argv[4] || "";
+      const docTarget = process.argv[5] || "";
+      const attempt = parseInt(process.argv[6] || "0", 10) || 0;
+
+      // SCALE_MIN mirrors audit-design-system.mjs — a spacing SCALE is >= this many
+      // distinct spacing custom properties (a single --gap is not a scale).
+      const SCALE_MIN = 3;
+      const SPACING_PROP_RE = /(--(?:space|spacing|sp|gap|gutter|stack|inset)[\w-]*)\s*:/gi;
+      const COMPONENT_EXTS = new Set([".astro", ".tsx", ".jsx", ".vue", ".svelte"]);
+      const SKIP_DIRS = new Set(["node_modules", ".git", ".astro", "dist", "build"]);
+
+      const abs = (rel) => (isAbsolute(rel) ? rel : join(repoRoot, rel));
+      const read = (p) => { try { return existsSync(p) && statSync(p).isFile() ? readFileSync(p, "utf8") : ""; } catch { return ""; } };
+
+      const notSystematized = (message) =>
+        console.log(JSON.stringify({ systematized_ok: false, systematized: {}, reason: "DESIGN_NOT_SYSTEMATIZED", message }));
+
+      // 1. The design-system.md inventory doc must exist + be non-empty.
+      if (!docTarget) { notSystematized("no doc_target (repo-relative design-system.md path) to verify"); process.exit(0); }
+      const docPath = abs(docTarget);
+      if (!existsSync(docPath)) { notSystematized(`design-system doc was not written in place: ${docPath}`); process.exit(0); }
+      if (read(docPath).trim().length === 0) { notSystematized(`design-system doc is empty: ${docPath}`); process.exit(0); }
+
+      // 2. The central stylesheet must now define a real spacing SCALE.
+      if (!tokenTarget) { notSystematized("no token_target (central stylesheet) to verify the spacing scale"); process.exit(0); }
+      const cssPath = abs(tokenTarget);
+      const css = read(cssPath);
+      const spacingTokens = new Set();
+      let m;
+      while ((m = SPACING_PROP_RE.exec(css)) !== null) spacingTokens.add(m[1].toLowerCase());
+      const spacing_scale_present = spacingTokens.size >= SCALE_MIN;
+      if (!spacing_scale_present) {
+        notSystematized(`central stylesheet ${tokenTarget} has ${spacingTokens.size} spacing var(s), need >= ${SCALE_MIN} for a scale`);
+        process.exit(0);
+      }
+
+      // Component inventory (evidence, non-gating).
+      const componentsAbs = abs(componentsDir || "src/components");
+      const components = [];
+      if (existsSync(componentsAbs)) {
+        const stack = [componentsAbs];
+        while (stack.length) {
+          const cur = stack.pop();
+          let entries; try { entries = readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+          for (const e of entries) {
+            if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) stack.push(join(cur, e.name)); }
+            else if (e.isFile() && COMPONENT_EXTS.has(extname(e.name))) components.push(relative(repoRoot, join(cur, e.name)));
+          }
+        }
+        components.sort();
+      }
+
+      // Systematized — emit the canonical record.
+      console.log(JSON.stringify({
+        systematized_ok: true,
+        reason: "",
+        systematized: {
+          doc: docPath,
+          doc_file: docTarget,
+          spacing_scale_present: true,
+          spacing_tokens: [...spacingTokens],
+          component_files: components,
+          generator: "systematize-agent (design affinity → frontier)",
+          attempt,
+        },
+      }));

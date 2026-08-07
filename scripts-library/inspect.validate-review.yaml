@@ -1,0 +1,46 @@
+# scripts-library/inspect.validate-review.yaml
+#
+# The RESUME VALIDATOR of cap.gate.review-design-system (flow.design-system stage 3).
+# After the human resumes the parked review gate with a verdict on the PROPOSED
+# atomic system, this deterministic leaf (a) refuses a silent/partial review, and
+# (b) reduces the verdict to the single boolean the flow routes on (`blessed` =
+# the system is approved as canonical).
+#
+# Verb `inspect`: deterministic, read-only over the verdict + proposed record, emits
+# ONE structured artifact ({ blessed, verdict, reason }). Not the human `gate` itself
+# (that is the awaiting_human leaf) — this is the trailing deterministic reduce, the
+# same decomposition cap.gate.prune-and-steer uses (awaiting_human → validating).
+#
+#   Args: [verdict, notes, proposed_json]
+#     verdict        the human's verdict — one of approve | revise | reject
+#     notes          the reviewer's free-text notes / requested revisions (may be "")
+#     proposed_json  the proposed systematized record as JSON (evidence, echoed back)
+#
+# Emits { blessed, verdict, reason, notes } on stdout (→ $.output.json.*): the
+# `notes` is echoed from a GUARANTEED-present source (this script), so the gate's
+# scalar `notes` output never derives from the optional human arg (V26).
+#   approve → { blessed: true,  verdict, reason: "" }
+#   revise  → { blessed: false, verdict, reason: "REVISION_REQUESTED" }
+#   reject  → { blessed: false, verdict, reason: "SYSTEM_REJECTED" }
+#
+# Fail-fast:
+#   exit 3 REVIEW_UNRESOLVED — an empty / out-of-vocab verdict on resume (no silent
+#          partial review). Non-zero propagates → the transition fails.
+version: "1.0.0"
+scripts:
+  inspect.validate-review:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic review resume validator. Always JSON on stdout (unless fail-fast).
+      const verdict = String(process.argv[2] || "").trim().toLowerCase();
+      const notes = process.argv[3] == null ? "" : String(process.argv[3]);
+      const VALID = new Set(["approve", "revise", "reject"]);
+      if (!VALID.has(verdict)) {
+        console.error(JSON.stringify({ error: "REVIEW_UNRESOLVED", got: verdict, need: [...VALID] }));
+        process.exit(3);
+      }
+      const reason = verdict === "approve" ? "" : verdict === "revise" ? "REVISION_REQUESTED" : "SYSTEM_REJECTED";
+      console.log(JSON.stringify({ blessed: verdict === "approve", verdict, reason, notes }));

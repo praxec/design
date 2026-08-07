@@ -1,0 +1,268 @@
+# capabilities/cap.implement.systematize-design-system.yaml
+#
+# ==================== SYSTEMATIZE — flow.design-system stage 2 ================
+# The ESTABLISH-OR-HONE keystone of the design-system LIFECYCLE flow. A FRONTIER
+# `design`-affinity agent (the taste/creation affinity — NOT `rollout`, which is
+# the commodity PROPAGATION affinity) produces the canonical ATOMIC system for a
+# target site. Modeled STRUCTURALLY EXACTLY on cap.implement.centralize-tokens:
+#   preparing (noop) → systematizing (agent) → verifying (script) → verify_gate.
+#
+# WHAT IT DOES — branches on the `mode` input:
+#   CREATE (greenfield, no atomic system exists): derive the atomic shared
+#     components + a spacing SCALE from the APPROVED design (design_system_path) and
+#     WRITE them.
+#   HONE (brownfield, a system exists): add the missing spacing scale, consolidate
+#     near-duplicate components, promote one-off styles into shared components, and
+#     close the audited `gaps`.
+#   EITHER WAY it writes exactly three kinds of artifact IN PLACE:
+#     - shared component file(s) under <components_dir>,
+#     - a spacing-scale token set into <token_target>'s `:root`, and
+#     - a `design-system.md` inventory doc at <doc_target>.
+#   It MUST NOT edit PAGE files or content — refactoring pages to COMPOSE the system
+#   is flow.rollout's job, later. This is a BARRIER: the review gate downstream
+#   depends on the whole system existing.
+#
+# ENGINE GROUNDING (V-rules, mirrors cap.implement.centralize-tokens):
+#   - VERB (V1/V6): the COGNITIVE verb `implement` (real, model-driven creation).
+#   - AGENT PRIMARY (V6): `kind: agent` is NOT a legal INITIAL-state primary, so the
+#     initial state is a `noop` prep gate and the agent step lives in `systematizing`.
+#   - AFFINITY: `affinity: design` — the FRONTIER taste affinity, resolved against
+#     the operator's models.yaml `activity: { design: ... }`.
+#   - MODELS.YAML: any `kind: agent` step makes `gateway.models_yaml` a hard
+#     requirement at check + serve (AGENT_MODELS_YAML_REQUIRED).
+#
+# FAIL-FAST DESIGN_NOT_SYSTEMATIZED (coding-write-evidence discipline): the agent's
+# own claim is NOT trusted. `requires_file_write: true` refuses an agent turn with
+# zero real write_file calls; then a DETERMINISTIC verifier (verify.design-
+# systematized) re-opens the design-system.md doc + the central stylesheet and
+# proves the doc is real + non-empty AND the spacing scale actually landed. Never a
+# fabricated pass.
+workflows:
+  cap.implement.systematize-design-system:
+    verb: implement
+    lifecycle: experimental
+    tags: [design, design-system, systematize, frontier, atomic]
+    description: >
+      ESTABLISH-OR-HONE the canonical atomic design system: a FRONTIER `design`-
+      affinity agent, branching on `mode` (create greenfield from the approved design,
+      or hone an existing system's audited gaps), writes shared component file(s) under
+      components_dir, a spacing SCALE into the central stylesheet's :root, and a
+      design-system.md inventory doc — all IN PLACE in the target repo. Makes NO page
+      edits (that is rollout's job). Fail-fast DESIGN_NOT_SYSTEMATIZED when the doc or
+      the spacing scale did not actually land.
+    snippet:
+      inputs:
+        # Absolute path to the target repo whose component + token + doc files are
+        # WRITTEN IN PLACE.
+        repo_root:      { type: string, required: true }
+        # create | hone — the branch decided by the audit's `exists` heuristic.
+        mode:           { type: string, required: true }
+        # Repo-relative central stylesheet the spacing scale is written into.
+        token_target:   { type: string, default: "src/styles/global.css" }
+        # Repo-relative dir the shared component file(s) are written under.
+        components_dir: { type: string, default: "src/components" }
+        # Repo-relative path of the design-system.md inventory doc to write.
+        doc_target:     { type: string, default: "design-system.md" }
+        # CREATE input: the approved design (source of taste) to derive from. "" ⇒
+        # the agent derives the system from the repo's existing surfaces.
+        design_system_path: { type: string, default: "" }
+        # HONE input: repo-relative path to the REFERENCE SURFACE whose treatment
+        # (line weights, section markers, column structure, heading style) is
+        # CANONICAL — the shared components are honed UP to match it, never averaged
+        # down to the lightest existing styling. "" ⇒ keep the existing treatment.
+        reference_surface: { type: string, default: "" }
+        # HONE input: the audited gaps to close (from cap.inspect.audit-design-system).
+        gaps:           { type: array,  default: [] }
+        # HONE input: the LOCATED ad-hoc px values from the audit —
+        # [{ value, count, locations: [{ file, line }] }]. Carries the EXACT sites the
+        # agent edits so it never has to search a directory it cannot grep. Optional
+        # (default []) so the create-mode / older callers don't break (V30).
+        adhoc_px:       { type: array,  default: [] }
+        # HONE input: the LOCATED near-duplicate rule bodies from the audit —
+        # [{ body, occurrences: [{ file, selector }] }]. The copy-pasted blocks to
+        # consolidate, WITH where they live. Optional (default []) for V30.
+        near_duplicates: { type: array, default: [] }
+        # Absolute path to this pack's scripts-library/ (threaded to the verifier).
+        scripts_dir:    { type: string, default: "" }
+        # Optional retry attempt number (carried into the record).
+        attempt:        { type: integer, default: 0 }
+      outputs:
+        systematized: { type: object }
+    initialState: preparing
+    initialContext:
+      systematized_ok: false
+      systematized:    {}
+      reason:          ""
+    states:
+
+      # V6-legal initial primary (noop): a prep gate so the agent step is not the
+      # initial-state transition. Routes straight into systematize.
+      preparing:
+        goal: Prepare to establish-or-hone the atomic design system.
+        transitions:
+          prepare:
+            target: systematizing
+            actor: deterministic
+            executor: { kind: noop }
+
+      # THE REAL SYSTEMATIZE STEP. `kind: agent` + design (frontier) affinity. The
+      # goal (the task/user message) injects the `mode` VALUE and branches its
+      # instructions on it. requires_file_write makes a zero-write turn a loud failure.
+      systematizing:
+        goal: >
+          Establish-or-hone the canonical atomic design system (frontier design).
+        transitions:
+          systematize:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: design
+              requires_file_write: true
+              # The dogfood run chain-exhausted because the hone agent burned its
+              # per-model turn ceiling (a fixed engine constant, ~24 turns — not a
+              # YAML knob) SEARCHING for gap values its file tool can't grep across a
+              # directory. The real fix is upstream: the audit now threads the exact
+              # { file, line } / { file, selector } locations into the goal, so the
+              # agent goes straight to each site and no longer spends turns searching —
+              # the default ceiling is ample. We also give it generous wall-clock so a
+              # real multi-file hone completes without a timeout.
+              max_seconds: 1200
+              # EXPLICIT file host rooted at the (absolute) repo_root so read_file /
+              # write_file / edit_file are ALWAYS granted over the TARGET REPO.
+              # Absolute root ⇒ real file tools; a relative/empty root yields NO file
+              # tools → AGENT_NO_FILE_WRITES.
+              tools:
+                - "file:{{ $.workflow.input.repo_root }}"
+              # The files this step is expected to write (lock declaration). Component
+              # filenames are the agent's to choose, so the components dir is declared
+              # as the owned prefix; the WRITE GUARD below is the hard page-file guard.
+              owned_files:
+                - "{{ $.workflow.input.token_target }}"
+                - "{{ $.workflow.input.doc_target }}"
+                - "{{ $.workflow.input.components_dir }}"
+              goal: >
+                ESTABLISH-OR-HONE the canonical ATOMIC design system for this target
+                repo, writing everything IN PLACE. Your file tools are ROOTED at the
+                target repo — use RELATIVE paths. FIRST read the existing central
+                stylesheet + components to ground yourself, THEN write.
+
+                You are in MODE: {{ $.workflow.input.mode }}
+
+                IF MODE IS `create` (greenfield — no real atomic system exists yet):
+                  Derive the atomic shared COMPONENTS and a spacing SCALE from the
+                  APPROVED design. The approved design source is at:
+                    {{ $.workflow.input.design_system_path }}
+                  (If that path is empty, derive the system from the repo's existing
+                  surfaces + central stylesheet.) Create the foundational shared
+                  components (e.g. Button, Card, Stack/Section, Container) as new files
+                  under the components dir, and a coherent spacing scale.
+
+                IF MODE IS `hone` (brownfield — a system already exists but has gaps):
+                  Do NOT rebuild from scratch. ADD the missing spacing scale,
+                  CONSOLIDATE near-duplicate components, PROMOTE one-off styles into
+                  shared components, and close these audited gaps:
+                    gaps = {{ $.workflow.input.gaps }}
+
+                  THE AUDIT HAS ALREADY LOCATED EVERY GAP FOR YOU — go STRAIGHT to
+                  those files and edit them; do NOT search. Your file tool cannot grep
+                  a directory, so searching wastes your turn budget and is unnecessary:
+                    - Each ad-hoc px value below carries the EXACT { file, line } sites
+                      that declare it — open that file at that line and replace the
+                      hardcoded px with the matching `var(--space-N)` scale step:
+                        adhoc_px = {{ $.workflow.input.adhoc_px }}
+                    - Each near-duplicate block below carries its { file, selector }
+                      occurrences — go to those selectors and consolidate the copied
+                      rule into the shared component / scale:
+                        near_duplicates = {{ $.workflow.input.near_duplicates }}
+                  Open exactly the files named in these locations and edit them in
+                  place. Do NOT search for the values — their locations are given.
+
+                  CANONICAL TREATMENT — the REFERENCE SURFACE defines the target
+                  look every shared component must match:
+                    reference_surface = {{ $.workflow.input.reference_surface }}
+                  If a reference surface is named, READ it (and the styles it
+                  scopes) and make the shared components adopt ITS treatment —
+                  line weights (rule/border thickness), section markers/numbering,
+                  column structure, heading + eyebrow style, and spacing rhythm —
+                  and pull the OTHER, lighter surfaces UP to that treatment. The
+                  reference is the CEILING, not one vote among equals: do NOT
+                  average the system down to the lightest existing styling. (If
+                  empty, keep the existing shared treatment and only close the
+                  gaps above.)
+
+                EITHER MODE — write exactly these three kinds of artifact:
+                  1. SHARED COMPONENT FILE(S) under the components dir:
+                       {{ $.workflow.input.components_dir }}
+                  2. A spacing SCALE as CSS custom properties in a `:root { … }` block
+                     of the central stylesheet (AT LEAST FOUR steps, e.g.
+                     `--space-1 … --space-6`), written IN PLACE into:
+                       {{ $.workflow.input.token_target }}
+                     Wire the shared components to CONSUME the scale via `var(--space-N)`
+                     instead of hardcoded px paddings/margins/gaps.
+                  3. A `design-system.md` INVENTORY doc — the canonical human-readable
+                     record listing every shared component + the spacing scale — at:
+                       {{ $.workflow.input.doc_target }}
+
+                WRITE GUARD (a failed run otherwise — THIS IS A BARRIER, NOT A
+                ROLLOUT): You MUST NOT edit any PAGE file (e.g. anything under
+                src/pages/, src/app/, or any route/view file) and you MUST NOT change
+                page CONTENT. Refactoring pages to COMPOSE these components is a
+                SEPARATE later step (rollout) — not yours. You may ONLY create/edit
+                shared component files under the components dir, the central stylesheet
+                (token scale only), and the design-system.md doc. You MUST NOT modify
+                package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, any
+                astro.config.*, tsconfig*, or any other build/config/dependency file,
+                and you MUST NOT run any package manager or add dependencies. Touching
+                a page or a build/config file is a FAILED run.
+
+                Write the files, then stop — the shared components, the spacing scale
+                in the central stylesheet, and the design-system.md on disk ARE the
+                deliverable, not a description of them. A described-but-unwritten
+                system is a FAILURE.
+            output:
+              agent_report: "$.output"
+
+      # DETERMINISTIC verify (coding-write-evidence): re-open the doc + the central
+      # stylesheet and prove the doc is real + non-empty AND the spacing scale landed.
+      # Emits the `systematized` record + a `systematized_ok` flag the gate routes on.
+      verifying:
+        goal: Verify the agent wrote a real design-system doc + a real spacing scale.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.design-systematized
+              args:
+                - "$.workflow.input.repo_root"
+                - "$.workflow.input.token_target"
+                - "$.workflow.input.components_dir"
+                - "$.workflow.input.doc_target"
+                - "$.workflow.input.attempt"
+            output:
+              systematized_ok: "$.output.json.systematized_ok"
+              systematized:    "$.output.json.systematized"
+              reason:          "$.output.json.reason"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.systematized_ok == true" }
+          not_systematized:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.systematized_ok != true" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

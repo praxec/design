@@ -1,0 +1,52 @@
+# scripts-library/inspect.audit-design-system.yaml
+#
+# Thin, honest wrapper over the design-system AUDIT core `audit-design-system.mjs`
+# (flow.design-system stage 1) — mirrors inspect.capture-tokens.yaml exactly: LOGIC
+# lives in the tested .mjs, this script-skill just locates it under the pack's own
+# `scripts_dir` (the engine exposes no pack-directory scope, so the orchestrator/
+# operator threads it in) and shells to `node`. We DO NOT re-implement the scan
+# here — single source of truth stays in audit-design-system.mjs.
+#
+# Verb `inspect` (the blessed DETERMINISTIC introspection verb): reads a target
+# repo's stylesheet + component files and writes ONE read-only structured artifact —
+# the audit signal set { exists, spacing_scale_present, adhoc_px, component_files,
+# gaps } the branch gate routes on (create vs hone).
+#
+#   Args: [scripts_dir, repo_root, token_target, components_dir]
+#     scripts_dir     absolute path to this pack's scripts-library/ (holds audit-design-system.mjs)
+#     repo_root       absolute path to the target repo to audit
+#     token_target    repo-relative central stylesheet (default handled by the .mjs)
+#     components_dir  repo-relative shared-components dir (default handled by the .mjs)
+#
+# Emits audit-design-system.mjs's JSON verbatim on stdout — auto-parsed to
+# $.output.json for the cap's per-field output mapping.
+#
+# Fail-fast:
+#   exit 2 ARGS_UNSET               — scripts_dir / repo_root missing
+#   exit 5 AUDIT_TOOL_UNRESOLVED    — audit-design-system.mjs not under scripts_dir
+#   exit 2 NO_INPUT (from the .mjs) — no repo_root reached the tool. A missing
+#          stylesheet / components dir is NOT an error — it is a first-class signal.
+version: "1.0.0"
+scripts:
+  inspect.audit-design-system:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      REPO_ROOT="${2:-}"
+      TOKEN_TARGET="${3:-}"
+      COMPONENTS_DIR="${4:-}"
+
+      if [ -z "$SCRIPTS_DIR" ] || [ -z "$REPO_ROOT" ]; then
+        echo '{"error":"ARGS_UNSET","need":["scripts_dir","repo_root"]}' >&2
+        exit 2
+      fi
+      TOOL="$SCRIPTS_DIR/audit-design-system.mjs"
+      if [ ! -f "$TOOL" ]; then
+        printf '{"error":"AUDIT_TOOL_UNRESOLVED","looked":"%s"}\n' "$TOOL" >&2
+        exit 5
+      fi
+      exec node "$TOOL" "$REPO_ROOT" "$TOKEN_TARGET" "$COMPONENTS_DIR"
