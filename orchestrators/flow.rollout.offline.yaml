@@ -2,10 +2,11 @@
 #
 # ===================== OFFLINE TWIN — the headless drive test substrate =====
 # An EXACT twin of the production rollout spine (flow.rollout) that differs in ONE
-# leaf: the `applying` step calls the OFFLINE STUB (design/cap.run.apply-design-
-# system, a deterministic token-adherent surface emitter) instead of the REAL
-# model-driven cap (design/cap.implement.apply-design-system, a `kind: agent` step
-# bound to the `rollout` affinity → deepseek). This mirrors the anneal twins
+# leaf: the per-surface fan-out spawns the OFFLINE per-surface pipeline
+# (design/flow.rollout.surface.offline, whose apply leaf is the deterministic stub
+# design/cap.run.apply-design-system) instead of the REAL per-surface pipeline
+# (design/flow.rollout.surface → design/cap.implement.apply-design-system, a
+# `kind: agent` step → deepseek). This mirrors the anneal twins
 # (flow.anneal.structure-first[.offline]).
 #
 # WHY A TWIN EXISTS (honest — a real duplication, forced by the engine):
@@ -16,16 +17,17 @@
 #     provider key/credit), and the pack's NO-FALLBACK rule forbids the real cap
 #     silently degrading to the stub.
 #   Therefore the production spine (real apply) and the offline drive test (stub
-#   apply) are two thin orchestrators over the SAME shared caps (capture-tokens,
-#   next-surface, token-adherence, detect-antipatterns, collect-surface). Only the
-#   `applying` leaf differs; keep the twins in sync.
+#   apply) are two thin orchestrators over the SAME shared per-surface + gate caps.
+#   Only the per-surface pipeline's `applying` leaf differs; keep the twins in sync.
 #
-# THE SPINE (spec §4b, Increment IV-a):
-#   capture(design system → token contract) → FAN OUT over the surface list:
-#     for each surface:  apply(stub, token-adherent) → GATE: token-adherence(NEW,
-#     the anti-regression heart) + detect-antipatterns(REUSED usability floor) →
-#     pass ⇒ collect + advance ; fail ⇒ bounded retry ; exhausted ⇒ FAIL
-#     ROLLOUT_REGRESSED → assemble the collected adherent surfaces → done.
+# THE SPINE (spec §4b, Increment IV-b):
+#   capture(design system → token contract) → centralize(one shared source) →
+#   FAN OUT over the surface list IN BOUNDED PARALLEL (engine `kind: parallel`, one
+#   branch per surface, ≤ max_parallel at once): each branch is
+#   design/flow.rollout.surface.offline (apply(stub) → token-adherence(the anti-
+#   regression heart) + detect(usability floor) → gate → bounded-retry). An adherent
+#   surface ends `done`; an off-system surface ends `failed`, and the parent folds
+#   the fan-in failed_count into ROLLOUT_REGRESSED → else assemble → done.
 #   (Real cpm-plan waves + real deepseek + real gh PR-open are IV-b/IV-c.)
 #
 # Driven by scripts-library/smoke.rollout.sh (offline: no LLM, no gh, no key).
@@ -36,12 +38,12 @@ workflows:
   flow.rollout.offline:
     lifecycle: experimental
     description: >
-      OFFLINE TWIN of flow.rollout: identical capture → per-surface apply →
-      token-adherence + detect gates → collect spine, but the apply leaf uses the
-      deterministic offline STUB (design/cap.run.apply-design-system) so the whole
+      OFFLINE TWIN of flow.rollout: identical capture → centralize → BOUNDED-PARALLEL
+      per-surface fan-out → fan-in gate spine, but each branch is the deterministic
+      offline per-surface pipeline (design/flow.rollout.surface.offline) so the whole
       spine is drivable HEADLESS + OFFLINE with no OpenRouter key/credit. Proves the
       anti-regression floor: an adherent surface collects; an off-system surface
-      (defect:true) fails token-adherence and, after bounded retry, fails
+      (defect:true) fails token-adherence and, after bounded retry, folds up to
       ROLLOUT_REGRESSED. Test substrate only; production uses flow.rollout.
     inputs:
       # The surfaces to roll (each { id, file, layout_type, defect? }). A fixed
@@ -54,6 +56,11 @@ workflows:
           - { id: "blog",    file: "src/pages/blog/index.astro", layout_type: "blog" }
       # The approved design-system markdown to capture into the token contract.
       design_system_path: { type: string,  default: "" }
+      # The repo-relative path to the ONE central token source (stylesheet) that
+      # becomes the single source of truth: the `centralizing` step (offline stub)
+      # defines the captured contract THERE as `:root` custom properties, and every
+      # surface then CONSUMES them rather than re-pasting token values.
+      token_target:       { type: string,  default: "src/styles/global.css" }
       # Absolute path to this pack's scripts-library/ (threaded to the script caps).
       scripts_dir:        { type: string,  default: "" }
       # Absolute path to the TARGET REPO whose surface files are EDITED IN PLACE by
@@ -64,6 +71,10 @@ workflows:
       # ROLLOUT_REGRESSED. With the deterministic stub, a defect surface is stable,
       # so it exhausts the budget and regresses (the anti-regression proof).
       max_retry:          { type: integer, default: 1 }
+      # The bounded-parallel WAVE SIZE (mirrors flow.rollout). The `max_concurrency`
+      # literal on the `rolling` fan-out mirrors this default — the engine reads that
+      # field statically, not from input (see flow.rollout header note).
+      max_parallel:       { type: integer, default: 3 }
     outputs:
       tokens:       { type: object }
       rolled:       { type: array }
@@ -71,21 +82,13 @@ workflows:
       off_system:   { type: array }
       reason:       { type: string }
     initialContext:
-      tokens:                 {}
-      surface_idx:            0
-      retry:                  0
-      rolled:                 []
-      rolled_count:           0
-      phase:                  ""
-      current_surface:        {}
-      surface_id:             ""
-      rolled_surface:         {}
-      tok_adherent:           true
-      off_system:             []
-      tok_count:              0
-      cand_antipattern_count: 0
-      fail_count:             0
-      reason:                 ""
+      tokens:       {}
+      centralized:  {}
+      rolled:       []
+      rolled_count: 0
+      off_system:   []
+      fail_count:   0
+      reason:       ""
     initialState: capturing
     states:
 
@@ -95,7 +98,7 @@ workflows:
         goal: Capture the design system into the canonical token contract.
         transitions:
           capture:
-            target: rolling
+            target: centralizing
             actor: deterministic
             executor:
               kind: workflow
@@ -107,171 +110,98 @@ workflows:
                 outputs:
                   "$.context.tokens": tokens
 
-      # FAN-OUT CURSOR — peek the surface at the cursor (shared cap; peek-only so a
-      # non-adherent surface can be re-rolled in place).
-      rolling:
-        goal: Pick the next surface to roll (or exhaust the list).
+      # CENTRALIZE (offline stub) — the keystone that prevents "consistent
+      # snowflakes": BEFORE any page is touched, the DETERMINISTIC stub EDITS the ONE
+      # central token source (repo_root/<token_target>) IN PLACE so the captured
+      # contract lives THERE as `:root` custom properties. This is a BARRIER — the
+      # parallel fan-out depends on this shared source and starts only after it
+      # completes. The ONLY leaf (with the per-surface `applying`) that differs from
+      # the production spine — here a stub, there a real agent.
+      centralizing:
+        goal: Centralize the token contract into the one shared source (offline stub).
         transitions:
-          pick:
-            target: roll_gate
+          centralize:
+            target: rolling
             actor: deterministic
             executor:
               kind: workflow
-              definitionId: design/cap.inspect.next-surface
+              definitionId: design/cap.run.centralize-tokens
               use:
                 inputs:
-                  surfaces:    "$.workflow.input.surfaces"
-                  surface_idx: "$.context.surface_idx"
+                  repo_root:    "$.workflow.input.repo_root"
+                  token_target: "$.workflow.input.token_target"
+                  tokens:       "$.context.tokens"
                 outputs:
-                  "$.context.phase":           phase
-                  "$.context.current_surface": current_surface
-                  "$.context.surface_id":      surface_id
+                  "$.context.centralized": centralized
 
-      roll_gate:
+      # FAN OUT — one branch per surface, BOUNDED to max_parallel at a time. Each
+      # branch is the deterministic offline per-surface pipeline
+      # (design/flow.rollout.surface.offline): apply(stub) → token-adherence →
+      # detect → gate → bounded-retry. The `centralizing` barrier guarantees the
+      # central tokens exist before any branch consumes them.
+      #
+      # join: expression "$.failed_count >= 0" is an ALWAYS-TRUE reduce — the fan-out
+      # is a pure map; the ROLLOUT_REGRESSED verdict is the `rollout_gate` below, on
+      # the fan-in failed_count. on_branch_failure: continue drains EVERY surface so
+      # failed_count counts all regressed surfaces (the anti-regression proof).
+      rolling:
+        goal: Roll every surface to the token contract, bounded-parallel (offline).
         transitions:
-          apply:
-            target: applying
+          roll_all:
+            target: rollout_gate
             actor: deterministic
-            guards:
-              - { kind: expr, expr: "$.context.phase == 'picked'" }
+            executor:
+              kind: parallel
+              branches:
+                for_each: "$.workflow.input.surfaces"
+                do:
+                  kind: workflow
+                  definitionId: design/flow.rollout.surface.offline
+                  # `use:` (not legacy `input:`): the use-shape resolves branch inputs
+                  # against $.workflow.input + $.context (legacy `input:` sees only
+                  # arguments/context — it can't read $.workflow.input), and returns
+                  # the child's declared outputs (rekeyed by name) as the branch output.
+                  use:
+                    inputs:
+                      surface:      "$.branch.value"
+                      repo_root:    "$.workflow.input.repo_root"
+                      tokens:       "$.context.tokens"
+                      token_target: "$.workflow.input.token_target"
+                      scripts_dir:  "$.workflow.input.scripts_dir"
+                      max_retry:    "$.workflow.input.max_retry"
+                    outputs:
+                      "$.context._rolled":     rolled
+                      "$.context._adherent":   adherent
+                      "$.context._off_system": off_system
+              join: { expression: "$.failed_count >= 0" }
+              on_branch_failure: continue
+              # WAVE-SIZE THROTTLE — mirrors the max_parallel input default (engine
+              # reads this statically, not from input; keep the two in sync).
+              max_concurrency: 3
+              total_timeout_ms: 3600000
+            output:
+              rolled:       "$.output.branches"
+              rolled_count: "$.output.summary.ok_count"
+              fail_count:   "$.output.summary.failed_count"
+
+      # FAN-IN GATE — every surface adherent (failed_count == 0) ⇒ assemble ; any
+      # surface still off-system after its retry budget (failed_count > 0) ⇒
+      # ROLLOUT_REGRESSED.
+      rollout_gate:
+        transitions:
           assemble:
             target: assembling
             actor: deterministic
             guards:
-              - { kind: expr, expr: "$.context.phase == 'exhausted'" }
-          unexpected:
-            target: fail_unexpected
-            actor: deterministic
-
-      # APPLY one surface — the OFFLINE STUB (the ONLY leaf that differs from the
-      # production spine). EDITS the fixture at repo_root/<surface.file> IN PLACE to
-      # be token-adherent (or, for a defect:true surface, injects an off-system
-      # color/font the gate will block).
-      applying:
-        goal: Roll the picked surface to the token contract in place (offline stub).
-        transitions:
-          apply:
-            target: verifying_tokens
-            actor: deterministic
-            executor:
-              kind: workflow
-              definitionId: design/cap.run.apply-design-system
-              use:
-                inputs:
-                  repo_root: "$.workflow.input.repo_root"
-                  surface:   "$.context.current_surface"
-                  tokens:    "$.context.tokens"
-                  attempt:   "$.context.retry"
-                outputs:
-                  "$.context.rolled_surface": rolled
-
-      # GATE 1 — THE ANTI-REGRESSION HEART: token-adherence (sub-instance; threads
-      # scripts_dir). `count` (an integer) is the scalar the gate branches on.
-      verifying_tokens:
-        goal: Assert the rolled surface uses ONLY the design system's tokens.
-        transitions:
-          verify:
-            target: verifying_detect
-            actor: deterministic
-            executor:
-              kind: workflow
-              definitionId: design/cap.verify.token-adherence
-              use:
-                inputs:
-                  scripts_dir: "$.workflow.input.scripts_dir"
-                  artifact:    "$.context.rolled_surface.artifact"
-                  tokens:      "$.context.tokens"
-                outputs:
-                  "$.context.tok_adherent": adherent
-                  "$.context.off_system":   off_system
-                  "$.context.tok_count":    count
-
-      # GATE 2 — REUSED usability floor: detect-antipatterns (blocking-only count).
-      verifying_detect:
-        goal: Run the deterministic usability floor over the rolled surface.
-        transitions:
-          detect:
-            target: tallying
-            actor: deterministic
-            executor:
-              kind: workflow
-              definitionId: design/cap.verify.detect-antipatterns
-              use:
-                inputs:
-                  artifact: "$.context.rolled_surface.artifact"
-                outputs:
-                  "$.context.cand_antipattern_count": antipattern_count
-
-      # TALLY — fold both gate verdicts into ONE scalar the surface gate branches on
-      # (fail_count == 0 ⇔ token-adherent AND detect-clean). Avoids an OR guard.
-      tallying:
-        goal: Combine the token-adherence + detect verdicts into a single fail count.
-        transitions:
-          tally:
-            target: surface_gate
-            actor: deterministic
-            executor: { kind: noop }
-            output:
-              fail_count: { add: ["$.context.tok_count", "$.context.cand_antipattern_count"] }
-
-      # SURFACE GATE — commodity can't regress: pass ⇒ collect + advance ; fail with
-      # retry budget ⇒ re-roll ; fail exhausted ⇒ ROLLOUT_REGRESSED.
-      surface_gate:
-        transitions:
-          collect:
-            target: collecting
-            actor: deterministic
-            guards:
               - { kind: expr, expr: "$.context.fail_count == 0" }
-          retry:
-            target: retrying
-            actor: deterministic
-            guards:
-              - { kind: expr, expr: "$.context.fail_count > 0" }
-              - { kind: expr, expr: "$.context.retry < $.workflow.input.max_retry" }
           regress:
             target: fail_regressed
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.context.fail_count > 0" }
-              - { kind: expr, expr: "$.context.retry >= $.workflow.input.max_retry" }
 
-      # COLLECT — append the gate-passing surface + advance the cursor + reset retry
-      # (shared cap; array-append lives in code per V13).
-      collecting:
-        goal: Collect the adherent surface; advance the cursor; loop.
-        transitions:
-          collect:
-            target: rolling
-            actor: deterministic
-            executor:
-              kind: workflow
-              definitionId: design/cap.inspect.collect-surface
-              use:
-                inputs:
-                  rolled_surface: "$.context.rolled_surface"
-                  rolled_in:      "$.context.rolled"
-                  surface_idx:    "$.context.surface_idx"
-                outputs:
-                  "$.context.rolled":       rolled
-                  "$.context.rolled_count": rolled_count
-                  "$.context.surface_idx":  next_idx
-                  "$.context.retry":        retry_reset
-
-      # RETRY — a non-adherent surface within budget: bump the attempt, re-roll the
-      # SAME surface (the cursor did not advance).
-      retrying:
-        goal: Re-roll the non-adherent surface (bounded retry).
-        transitions:
-          retry:
-            target: applying
-            actor: deterministic
-            executor: { kind: noop }
-            output:
-              retry: { add: ["$.context.retry", 1] }
-
-      # FAIL-FAST ROLLOUT_REGRESSED (spec §4b): a surface still off-system after the
-      # retry budget. `off_system` in context names the offending color(s)/font(s).
+      # FAIL-FAST ROLLOUT_REGRESSED (spec §4b): at least one surface is still
+      # off-system after the retry budget (folded up as a branch failure).
       fail_regressed:
         goal: Record the ROLLOUT_REGRESSED fail-fast reason.
         transitions:
@@ -282,19 +212,9 @@ workflows:
             output:
               reason: { set: "ROLLOUT_REGRESSED" }
 
-      fail_unexpected:
-        goal: Record a broken fan-out phase contract.
-        transitions:
-          mark:
-            target: failed
-            actor: deterministic
-            executor: { kind: noop }
-            output:
-              reason: { set: "UNEXPECTED_PICK_PHASE" }
-
-      # ASSEMBLE — the surface list is exhausted; the `rolled` ledger holds every
-      # adherent surface. Real gh PR-open on the target repo_root is IV-c; here the
-      # collected set IS the assembled rollout (PR-plan payload).
+      # ASSEMBLE — every surface cleared the gate; the `rolled` fan-in holds every
+      # adherent surface branch. Real gh PR-open on the target repo_root is IV-c;
+      # here the collected set IS the assembled rollout (PR-plan payload).
       assembling:
         goal: Assemble the collected adherent surfaces (PR-plan; real gh is IV-c).
         transitions:

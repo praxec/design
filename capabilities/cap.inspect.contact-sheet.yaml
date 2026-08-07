@@ -39,6 +39,12 @@ workflows:
         candidates:  { type: array,  required: true }
         # Directory to write contact-sheet.html into.
         out_dir:     { type: string, required: true }
+        # OPTIONAL incumbent BASELINE record (from inspect.baseline-record). When a
+        # non-empty record, contact-sheet.mjs prepends it as candidate-0 with a
+        # BASELINE badge so the human prunes the fresh directions against it. {} ⇒
+        # no baseline (the generated spread alone). Kept SEPARATE from `candidates`
+        # so it never affects DIVERGENCE_COLLAPSED / NO_CANDIDATES_TO_PRUNE.
+        baseline:    { type: object, default: {} }
       outputs:
         contact_sheet: { type: object }
     initialState: building
@@ -56,6 +62,7 @@ workflows:
                 - "$.workflow.input.scripts_dir"
                 - "$.workflow.input.candidates"
                 - "$.workflow.input.out_dir"
+                - "$.workflow.input.baseline"
             output:
               contact_sheet: "$.output.json.contact_sheet"
       done: { terminal: true }

@@ -1,0 +1,217 @@
+# capabilities/cap.research.direction.yaml
+#
+# ================= THE DIRECTION FRONT-END — spec §4/§3 (front door) =================
+# The missing "set a direction at the top" piece. The spec named it across
+# cap.brief.purpose / cap.research.directions / cap.elicit.aesthetic; only the
+# downstream annealing spine (which consumes PRE-AUTHORED seeds) was ever built,
+# so every run hand-authored app_type + profile + seeds. This cap closes that gap:
+# ONE top-level prose DIRECTION (+ optional references + the target's real content)
+# → the structured {app_type, profile, direction_brief, seeds[]} the spine already
+# consumes. Reusable + direction-agnostic: nothing about any specific aesthetic
+# lives here; the direction is the input.
+#
+# ENGINE GROUNDING (V-rules, verified against praxec source + the sibling
+# cap.implement.generate-direction):
+#   - VERB (V1/V6): cognitive verb `research` (the cap mines references + the
+#     content and SYNTHESIZES the seed plan). `brief`/`elicit` are NOT cap-verbs.
+#   - AGENT PRIMARY (V6): `kind: agent` is not a legal INITIAL-state primary → a
+#     `noop` prep gate leads, the agent step lives in the SECOND state.
+#   - AFFINITY: `affinity: design` (the frontier synthesis affinity → Kimi K3 via
+#     the operator's models.yaml); any `kind: agent` step makes gateway.models_yaml
+#     a hard requirement at check + serve.
+#   - WRITE EVIDENCE (coding-write-evidence): requires_file_write:true refuses a
+#     zero-write turn; then a DETERMINISTIC verifier (research.verify-brief) re-opens
+#     brief.json and schema-validates it. A described-but-unwritten (or malformed)
+#     brief → terminal BRIEF_UNPARSEABLE/BRIEF_INVALID. Never a fabricated pass.
+#
+# The seeds it emits use ONLY the closed scorer vocabulary (corners/type/grid/
+# composition/palette/gradient/rules); the aesthetic NARRATIVE rides a SEPARATE
+# `direction_brief` (threaded to the generator as taste guidance) so seed-adherence
+# stays clean structural-only.
+workflows:
+  cap.research.direction:
+    verb: research
+    lifecycle: experimental
+    tags: [design, direction, seeds, front-end, kimi]
+    description: >
+      Turn a top-level prose DIRECTION (+ optional references + target content) into
+      the structured annealing inputs {app_type, profile, direction_brief, seeds[]}
+      that flow.anneal.structure-first consumes — so an operator sets a direction at
+      the top instead of hand-authoring seeds. A `kind: agent` step bound to the
+      `design` affinity writes brief.json; a deterministic verifier schema-validates
+      it (seeds against the closed scorer vocabulary). Fail-fast BRIEF_UNPARSEABLE /
+      BRIEF_INVALID when no valid brief was written (no fabricated seeds).
+    snippet:
+      inputs:
+        # Directory to write brief.json into (the run's artifacts dir). Also the
+        # agent's file-host ROOT — the content file, if any, must live here and be
+        # named by its RELATIVE path.
+        out_dir:       { type: string, required: true }
+        # The operator's top-level prose direction (the ONLY source of aesthetic
+        # intent). "" ⇒ nothing to derive from ⇒ the agent still must be given intent.
+        direction:     { type: string, required: true }
+        # Optional free text: reference URLs / competitor names / DNA notes. Mined
+        # for design DNA; the direction governs on conflict.
+        references:    { type: string, default: "" }
+        # Optional RELATIVE filename (within out_dir) of the target page's real copy,
+        # used to infer app-type + needs. "" ⇒ inferred from the direction alone.
+        content_path:  { type: string, default: "" }
+        # How many DISTINCT seeds to derive (the per-round fan-out width).
+        n:             { type: integer, default: 3 }
+        # Optional app-type hint (e.g. "landing"); "" ⇒ the agent infers it.
+        app_type_hint: { type: string, default: "" }
+        # OPTIONAL visual references (praxec 0.0.48+ governed image inputs): a JSON
+        # array STRING of image paths (reference-site screenshots + operator moodboard)
+        # from cap.inspect.reference-capture. The research agent SEES them (flattened
+        # into image message-parts) while deriving seeds. "" / "[]" ⇒ no images
+        # (text-only, pre-vision behavior). The design affinity model must be
+        # vision-capable (kimi-k3 is).
+        reference_images_json: { type: string, default: "" }
+        # OPTIONAL measured structural DNA (from cap.inspect.reference-capture) of the
+        # reference SITES — type/grid/palette/… surfaced to corroborate the visuals
+        # with fact. "" ⇒ no measured DNA (derive from the direction + images alone).
+        reference_dna:         { type: string, default: "" }
+      outputs:
+        app_type:        { type: string }
+        profile:         { type: string }   # JSON string (score-axes --profile)
+        direction_brief: { type: string }
+        seeds:           { type: array }
+    initialState: preparing
+    initialContext:
+      parsed:          false
+      app_type:        ""
+      profile:         ""
+      direction_brief: ""
+      seeds:           []
+      reason:          ""
+    states:
+
+      # V6-legal initial primary (noop): a prep gate so the agent step is not the
+      # initial-state transition. Routes straight into derivation.
+      preparing:
+        goal: Prepare to derive the annealing inputs from the direction.
+        transitions:
+          prepare:
+            target: deriving
+            actor: deterministic
+            executor: { kind: noop }
+
+      # THE SYNTHESIS STEP. `kind: agent` + design affinity + the pinned skill
+      # (assembled as the system message). The goal injects the direction,
+      # references, content ref, n, and the exact output path.
+      deriving:
+        skills: [research.design-direction]
+        goal: >
+          Derive app_type + core-needs profile + N distinct structural seeds from
+          the direction, and WRITE them as brief.json.
+        transitions:
+          derive:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: design
+              requires_file_write: true
+              max_seconds: 900
+              # File host rooted at the (absolute) out_dir so write_file/read_file
+              # are granted; the agent uses RELATIVE paths under it.
+              tools:
+                - "file:{{ $.workflow.input.out_dir }}"
+              owned_files:
+                - "{{ $.workflow.input.out_dir }}/brief.json"
+              # Governed VISUAL references (0.0.48+): one array-valued entry the
+              # engine flattens into image message-parts — the research agent SEES
+              # the reference screenshots/moodboard while deriving seeds, so the
+              # seeds are grounded in what the references actually look like. "" ⇒
+              # no images (text-only). Mirrors generate-direction's idiom.
+              images:
+                - "{{ $.workflow.input.reference_images_json }}"
+              goal: >
+                Translate the DIRECTION below into the annealing inputs and WRITE
+                them with your file-write tool to EXACTLY this relative path (your
+                file tools are rooted at your working directory — use the relative
+                name):
+
+                  brief.json
+
+                The file MUST be valid JSON matching the schema your instructions
+                specify: { app_type, profile:{app,needs[]}, direction_brief,
+                seeds:[ ... ] }, with EXACTLY {{ $.workflow.input.n }} seeds, each a
+                fully-specified constraint object using ONLY the allowed keys/values.
+
+                DIRECTION (the operator's brief — the only source of aesthetic intent):
+                  {{ $.workflow.input.direction }}
+
+                REFERENCES (optional DNA to emulate/beat; direction governs on conflict):
+                  {{ $.workflow.input.references }}
+
+                If IMAGES are attached to this message, they are the REFERENCE SITES
+                and operator moodboard — study their palette, type register, layout
+                structure, density, and trust signals; let them ground the seeds you
+                derive (do NOT copy any one; synthesize the register they imply,
+                expressed through the closed seed vocabulary). If none are attached,
+                derive from the direction + measured DNA below.
+
+                MEASURED STRUCTURAL DNA (extracted from the actual reference sites —
+                grounded fact to CORROBORATE the visuals; use it to disambiguate the
+                seeds, direction governs on conflict):
+                  reference_dna = {{ $.workflow.input.reference_dna }}
+
+                APP-TYPE HINT (optional; infer if empty):
+                  {{ $.workflow.input.app_type_hint }}
+
+                CONTENT SOURCE (optional): if a relative filename is named here, it
+                is a file in your working directory holding the target page's REAL
+                copy — READ it with your file-read tool to infer the app-type and
+                core needs (do NOT lay it out; that is a later stage). If empty,
+                infer from the direction alone.
+                  content source: {{ $.workflow.input.content_path }}
+
+                Write ONLY brief.json (no prose, no markdown fences inside it), then
+                stop — the file on disk is the deliverable, not a description of it.
+            output:
+              agent_report: "$.output"
+
+      # DETERMINISTIC verify + schema-validate (coding-write-evidence): re-open
+      # brief.json, parse, validate seeds against the closed scorer vocabulary,
+      # emit the typed annealing inputs (profile as a JSON string).
+      verifying:
+        goal: Verify + schema-validate brief.json into typed annealing inputs.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.direction-brief
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.n"
+            output:
+              parsed:          "$.output.json.parsed"
+              app_type:        "$.output.json.app_type"
+              profile:         "$.output.json.profile"
+              direction_brief: "$.output.json.direction_brief"
+              seeds:           "$.output.json.seeds"
+              reason:          "$.output.json.reason"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.parsed == true" }
+          bad:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.parsed != true" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

@@ -248,6 +248,34 @@ workflows:
       # lays out the SAME words (design is the only variable); "" ⇒ the agent
       # uses representative content (Increment-I default). Content-grounded gen.
       content_path: { type: string, default: "" }
+      # OPTIONAL aesthetic direction threaded to every generation leaf (from
+      # cap.research.direction / flow.design.from-direction). The taste/register
+      # SEPARATE from the hard structural seeds. "" ⇒ pre-front-end behavior.
+      direction_brief: { type: string, default: "" }
+      # OPTIONAL visual references (0.0.48+ governed image inputs): a JSON array
+      # STRING of image paths threaded to every generation leaf so the model SEES
+      # the reference screenshots/moodboard. "" ⇒ no images. From the reference-
+      # gathering phase in flow.design.from-direction.
+      reference_images_json: { type: string, default: "" }
+      # OPTIONAL incumbent baseline: the live URL of the EXISTING design. When
+      # non-empty, the flow captures it BEFORE diverging, scores + usability-checks
+      # it honestly, and shows it on the human contact sheet as candidate-0
+      # (BASELINE) so fresh directions are pruned AGAINST what exists today. Kept
+      # in a SEPARATE `$.context.baseline` slot (never in `eligible`) so it does
+      # NOT affect DIVERGENCE_COLLAPSED. "" ⇒ no baseline (pre-baseline behavior).
+      incumbent_url: { type: string, default: "" }
+      # The assembled incumbent BASELINE record threaded to the contact sheet.
+      # Declared as an OPTIONAL input (default {}) so V13 accepts building_sheet's
+      # read of it; the pre-diverge `baseline_recording` state OVERWRITES it in the
+      # incumbent path (a direct kind:script leaf writes via `output:`, which V13
+      # does not count as a slot-writer, so the input declaration is what satisfies
+      # V13). {} ⇒ no baseline. An operator MAY also supply one directly.
+      baseline:      { type: object, default: {} }
+      # Self-check refine passes per candidate (0.0.48+ vision loop): the generator
+      # renders its candidate, SEES its own render + the references, and rewrites to
+      # close the gap. 0 ⇒ plain generation (no refine); 1 ⇒ generate + one visual
+      # self-correction. Routed through design/flow.generate.self-checked.
+      selfcheck_rounds: { type: integer, default: 0 }
       # Bounds the refine loop (spec §6 "capped by max-rounds").
       max_rounds:  { type: integer, default: 1 }
     outputs:
@@ -281,9 +309,20 @@ workflows:
       cand_antipattern_count: 0
       cand_warnings:         []
       contact_sheet:         {}
-      preview_url:           ""
       steer:                 {}
       feedback:              []
+      # Incumbent-baseline scratch (Part B). The `bl_*` slots are the per-stage
+      # scratch of the pre-diverge capture→render→score→detect→record path. All
+      # default empty/neutral so the flow is untouched when incumbent_url == "".
+      # (`baseline` itself is a declared input, seeded {} — see inputs:.)
+      bl_captured:           false
+      bl_candidate:          {}
+      bl_reason:             ""
+      bl_thumbnail:          {}
+      bl_g:                  0
+      bl_fit:                {}
+      bl_antipattern_count:  0
+      bl_warnings:           []
     initialState: seeding
     states:
 
@@ -310,7 +349,7 @@ workflows:
       purpose_gate:
         transitions:
           proceed:
-            target: diverging
+            target: baseline_gate
             actor: deterministic
             guards:
               - { kind: expr, expr: "$.workflow.input.app_type != ''" }
@@ -329,6 +368,155 @@ workflows:
             executor: { kind: noop }
             output:
               reason: { set: "PURPOSE_UNSET" }
+
+      # ================= INCUMBENT BASELINE (Part B, pre-diverge) =================
+      # BRANCH on incumbent_url: capture the existing site as candidate-0 BEFORE
+      # diverging (so it is on the contact sheet as the BASELINE the human prunes
+      # against), or skip straight to `diverging` (pre-baseline behavior, untouched).
+      # The baseline is stored in a SEPARATE `$.context.baseline` slot — NEVER in
+      # `eligible` — so DIVERGENCE_COLLAPSED stays keyed to GENERATED eligibles only.
+      baseline_gate:
+        transitions:
+          with_incumbent:
+            target: capturing_incumbent
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.incumbent_url != ''" }
+          without_incumbent:
+            target: diverging
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.incumbent_url == ''" }
+
+      # CAPTURE the incumbent live URL into a self-contained snapshot candidate
+      # (cap.inspect.capture-incumbent, BUILT). Capture is a first-class verdict:
+      # `captured` false is routed, never a crash.
+      capturing_incumbent:
+        goal: Capture the existing live site as a baseline snapshot candidate.
+        transitions:
+          capture:
+            target: incumbent_capture_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.capture-incumbent
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  url:         "$.workflow.input.incumbent_url"
+                  out_dir:     "$.workflow.input.out_dir"
+                outputs:
+                  "$.context.bl_captured":  captured
+                  "$.context.bl_candidate": candidate
+                  "$.context.bl_reason":    reason
+
+      # FAIL-FAST INCUMBENT_CAPTURE_FAILED: the operator explicitly asked for the
+      # baseline, so a failed capture fails the flow (never silently drop it).
+      incumbent_capture_gate:
+        transitions:
+          captured:
+            target: rendering_incumbent
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.bl_captured == true" }
+          not_captured:
+            target: fail_incumbent_capture
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.bl_captured != true" }
+
+      fail_incumbent_capture:
+        goal: Record the INCUMBENT_CAPTURE_FAILED fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "INCUMBENT_CAPTURE_FAILED" }
+
+      # RENDER a REAL thumbnail of the incumbent snapshot (same cap as generated).
+      rendering_incumbent:
+        goal: Render a real thumbnail of the incumbent snapshot.
+        transitions:
+          render:
+            target: scoring_incumbent
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.render-thumbnail
+              use:
+                inputs:
+                  scripts_dir:  "$.workflow.input.scripts_dir"
+                  # Thumbnail the REAL live site (render-thumbnail handles http(s)
+                  # URLs) so the human sees the ACTUAL existing design as the
+                  # baseline — NOT snapshot.mjs's geometry schematic (that
+                  # reconstruction is right for SCORING, below, but not the visual).
+                  candidate:    "$.workflow.input.incumbent_url"
+                  out_dir:      "$.workflow.input.out_dir"
+                  candidate_id: "$.context.bl_candidate.id"
+                outputs:
+                  "$.context.bl_thumbnail": thumbnail
+
+      # SCORE the incumbent on the same axes as generated candidates (honest G/fit).
+      scoring_incumbent:
+        goal: Score the incumbent on the same axes (honest, commensurable).
+        transitions:
+          score:
+            target: detecting_incumbent
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.score-axes
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  artifact:    "$.context.bl_candidate.artifact"
+                  profile:     "$.workflow.input.profile"
+                outputs:
+                  "$.context.bl_g":   G
+                  "$.context.bl_fit": fit
+
+      # DETECT the usability floor on the incumbent (honest — the current site may
+      # well have findings; the baseline is shown REGARDLESS of usability).
+      detecting_incumbent:
+        goal: Run the deterministic usability floor on the incumbent (honest).
+        transitions:
+          detect:
+            target: baseline_recording
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.detect-antipatterns
+              use:
+                inputs:
+                  artifact: "$.context.bl_candidate.artifact"
+                outputs:
+                  "$.context.bl_antipattern_count": antipattern_count
+                  "$.context.bl_warnings":          warnings
+
+      # ASSEMBLE the baseline record (inspect.baseline-record, a direct kind:script
+      # leaf — no cap wrapper needed) in the eligible-record shape, ALWAYS emitted
+      # regardless of usability, marked baseline:true. Stored in `$.context.baseline`
+      # (separate from `eligible`), then proceed to the normal divergence.
+      baseline_recording:
+        goal: Assemble the incumbent baseline record (always; never gated on usability).
+        transitions:
+          assemble:
+            target: diverging
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.baseline-record
+              args:
+                - "$.context.bl_candidate"
+                - "$.context.bl_thumbnail"
+                - "$.context.bl_g"
+                - "$.context.bl_fit"
+                - "$.context.bl_antipattern_count"
+                - "$.context.bl_warnings"
+            output:
+              baseline: "$.output.json.record"
 
       # DIVERGE — the fan-out cursor. Picks the next seed (bounded by N) and
       # advances the monotone cursor AT PICK TIME (so no arm rewinds it).
@@ -412,14 +600,21 @@ workflows:
             actor: deterministic
             executor:
               kind: workflow
-              definitionId: design/cap.implement.generate-direction
+              # Routed through the self-checked loop (generate → render → the model
+              # SEES its own render + refs → rewrites), a drop-in for the plain
+              # generation cap. selfcheck_rounds=0 ⇒ it just generates (no refine).
+              definitionId: design/flow.generate.self-checked
               use:
                 inputs:
-                  out_dir:      "$.workflow.input.out_dir"
-                  seed:         "$.context.current_seed"
-                  profile:      "$.workflow.input.profile"
-                  candidate_id: "$.context.candidate_id"
-                  content_path: "$.workflow.input.content_path"
+                  out_dir:         "$.workflow.input.out_dir"
+                  seed:            "$.context.current_seed"
+                  profile:         "$.workflow.input.profile"
+                  candidate_id:    "$.context.candidate_id"
+                  content_path:    "$.workflow.input.content_path"
+                  direction_brief: "$.workflow.input.direction_brief"
+                  reference_images_json: "$.workflow.input.reference_images_json"
+                  scripts_dir:      "$.workflow.input.scripts_dir"
+                  selfcheck_rounds: "$.workflow.input.selfcheck_rounds"
                 outputs:
                   "$.context.candidate": candidate
 
@@ -436,6 +631,7 @@ workflows:
               definitionId: design/cap.run.render-thumbnail
               use:
                 inputs:
+                  scripts_dir:  "$.workflow.input.scripts_dir"
                   candidate:    "$.context.candidate.artifact"
                   out_dir:      "$.workflow.input.out_dir"
                   candidate_id: "$.context.candidate_id"
@@ -518,7 +714,7 @@ workflows:
         goal: Compose the eligible spread into one contact sheet for the human.
         transitions:
           build:
-            target: serving_preview
+            target: pruning
             actor: deterministic
             executor:
               kind: workflow
@@ -528,28 +724,9 @@ workflows:
                   scripts_dir: "$.workflow.input.scripts_dir"
                   candidates:  "$.context.eligible"
                   out_dir:     "$.workflow.input.out_dir"
+                  baseline:    "$.context.baseline"
                 outputs:
                   "$.context.contact_sheet": contact_sheet
-
-      # Hand the human a URL, not a path. The sheet embeds each candidate live and
-      # candidates reference local artwork; both are restricted under `file://`,
-      # so serving over loopback is what makes the gate actually show designs.
-      # This step CANNOT fail the run — the cap degrades to an empty preview_url
-      # and the sheet is still on disk (see cap.run.serve-preview).
-      serving_preview:
-        goal: Serve the artifacts on loopback so the human gets a link.
-        transitions:
-          serve:
-            target: pruning
-            actor: deterministic
-            executor:
-              kind: workflow
-              definitionId: design/cap.run.serve-preview
-              use:
-                inputs:
-                  out_dir: "$.workflow.input.out_dir"
-                outputs:
-                  "$.context.preview_url": preview_url
 
       # THE HUMAN PRUNE-AND-STEER (spec §6b) — present the pre-built contact sheet
       # of the usable spread (each cleared the usability floor; fit/G shown as
@@ -573,7 +750,6 @@ workflows:
                 inputs:
                   candidates:    "$.context.eligible"
                   contact_sheet: "$.context.contact_sheet"
-                  preview_url:   "$.context.preview_url"
                 outputs:
                   "$.context.chosen":   chosen
                   "$.context.steer":    steer

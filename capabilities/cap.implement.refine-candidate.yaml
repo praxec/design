@@ -1,0 +1,184 @@
+# capabilities/cap.implement.refine-candidate.yaml
+#
+# ==================== REFINE-WITH-VISION — the self-check leaf ====================
+# A drop-in sibling of cap.implement.generate-direction (SAME input/output
+# contract, plus one field: `render_image`). Where generation writes a candidate
+# from the seed + references, THIS cap closes the loop: it hands the design model
+# BACK a screenshot of how its own candidate ACTUALLY renders (alongside the
+# design references) and has it critique the render against the intent, then
+# REWRITE the candidate to fix the gaps. Same content/copy — only the design moves.
+#
+# ENGINE GROUNDING (V-rules, mirrored from generate-direction — verified shape):
+#   - VERB (V1/V6): cognitive verb `implement` (model-driven rewrite, not a
+#     deterministic emit).
+#   - AGENT PRIMARY (V6): `kind: agent` is NOT a legal INITIAL-state primary. So a
+#     `noop` prep gate leads and the agent step lives in the SECOND state.
+#   - AFFINITY: `affinity: design` (open Activity key → the operator's models.yaml
+#     binds it to a vision-capable model, e.g. Kimi K3).
+#   - requires_file_write: a zero-write turn is a loud failure; then the SAME
+#     deterministic verifier (verify.candidate-renderable) re-opens the rewritten
+#     candidate at its computed path and confirms it exists + parses as HTML. A
+#     described-but-unwritten rewrite → terminal CANDIDATE_NOT_RENDERABLE.
+#
+# VISION INPUTS (praxec 0.0.48+ governed image inputs): the `images:` block carries
+# TWO entries the engine flattens into image message-parts — (1) the design
+# REFERENCES (a JSON array STRING → N images), and (2) the self-check render (one
+# abs .png path → one image). Either rendering to "" is simply skipped, so the cap
+# degrades gracefully: no render ⇒ references-only critique; no references ⇒
+# render-only. The model must be vision-capable.
+workflows:
+  cap.implement.refine-candidate:
+    verb: implement
+    lifecycle: experimental
+    tags: [design, refine, self-check, vision, kimi]
+    description: >
+      REFINE-WITH-VISION: a `kind: agent` step bound to the `design` affinity
+      READS the current candidate HTML, SEES [the design references + a screenshot
+      of how its own candidate currently renders], critiques the render against the
+      intent (seed + direction), and REWRITES the candidate to close the gap —
+      keeping the same content/copy. Drop-in for the plain generation cap. Fail-fast
+      CANDIDATE_NOT_RENDERABLE when no real, parseable HTML was written.
+    snippet:
+      inputs:
+        # Directory the candidate lives in / is (re)written into (the run's artifacts dir).
+        out_dir:      { type: string, required: true }
+        # Stable candidate id — the artifact filename is candidate-<id>.html.
+        candidate_id: { type: string, default: "" }
+        # The hard-constraint seed set as a JSON string (echoed into the intent).
+        seed:         { type: string, default: "{}" }
+        # The app-type core-needs profile as a JSON string (fit-for-purpose §4).
+        profile:      { type: string, default: "" }
+        # OPTIONAL aesthetic direction (taste/register/feel), SEPARATE from the seed.
+        direction_brief: { type: string, default: "" }
+        # OPTIONAL visual references: a JSON array STRING of image paths the agent SEES.
+        reference_images_json: { type: string, default: "" }
+        # OPTIONAL self-check render: an abs path to a screenshot of how THIS
+        # candidate currently renders (from run.render-image). "" ⇒ references-only.
+        render_image: { type: string, default: "" }
+        # OPTIONAL content source (kept for contract parity with generation).
+        content_path: { type: string, default: "" }
+      outputs:
+        candidate: { type: object }
+    initialState: preparing
+    initialContext:
+      renderable: false
+      candidate:  {}
+      reason:     ""
+    states:
+
+      # V6-legal initial primary (noop): a prep gate so the agent step is not the
+      # initial-state transition. Routes straight into the refine.
+      preparing:
+        goal: Prepare to refine the current candidate against its own render.
+        transitions:
+          prepare:
+            target: refining
+            actor: deterministic
+            executor: { kind: noop }
+
+      # THE REFINE STEP. `kind: agent` + design affinity. The agent reads its own
+      # candidate, SEES [references + its render], critiques, and rewrites in place.
+      refining:
+        goal: >
+          Critique the candidate's own render against the intent + references and
+          rewrite it to close the gap.
+        transitions:
+          refine:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: design
+              requires_file_write: true
+              max_seconds: 900
+              # EXPLICIT file host rooted at the (absolute) out_dir so read_file /
+              # write_file are ALWAYS granted (CompositeToolHost only exposes file
+              # tools when the connection root is ABSOLUTE). A per-state `tools:`
+              # overrides the gateway default; refine needs only the file host.
+              tools:
+                - "file:{{ $.workflow.input.out_dir }}"
+              owned_files:
+                - "{{ $.workflow.input.out_dir }}/candidate-{{ $.workflow.input.candidate_id }}.html"
+              # Governed VISUAL inputs (0.0.48+): TWO entries the engine flattens
+              # into image message-parts — the design REFERENCES (array string → N
+              # images) + the self-check render (one abs .png). Either "" is skipped.
+              images:
+                - "{{ $.workflow.input.reference_images_json }}"
+                - "{{ $.workflow.input.render_image }}"
+              goal: >
+                You previously generated candidate-{{ $.workflow.input.candidate_id }}.html.
+                READ it now with your file-read tool — your file tools are ROOTED at
+                your working directory, so use the RELATIVE path:
+
+                  candidate-{{ $.workflow.input.candidate_id }}.html
+
+                The images attached to this message are: the design REFERENCES, and
+                a screenshot of how YOUR candidate CURRENTLY renders. CRITIQUE the
+                render against the intent (the seed + direction below) and the
+                references — list, concretely, what is OFF: visual hierarchy,
+                spacing/rhythm, palette, trust signals, layout/composition — then
+                REWRITE candidate-{{ $.workflow.input.candidate_id }}.html to fix
+                exactly those gaps.
+
+                Honor the HARD seed constraints (each key is a requirement a
+                deterministic scorer will verify against your rendered CSS/DOM):
+                  seed = {{ $.workflow.input.seed }}
+
+                Serve the app's core needs (fit-for-purpose):
+                  profile = {{ $.workflow.input.profile }}
+
+                Serve this overall AESTHETIC DIRECTION (the taste/register/feel —
+                honor it alongside the hard seed; the seed sets geometry, this sets
+                tone). If empty, let the seed + profile govern:
+                  direction = {{ $.workflow.input.direction_brief }}
+
+                Keep the SAME content/copy (headings, body, labels, CTAs) — do NOT
+                add, drop, reorder, or reword content; the words are fixed, the
+                DESIGN is what you improve. Inline ALL CSS; no external
+                fonts/styles/scripts/images. If NO render screenshot is attached,
+                critique against the references + intent alone. Write the file, then
+                stop — the file on disk is the deliverable, not a description of it.
+            output:
+              agent_report: "$.output"
+
+      # DETERMINISTIC verify (coding-write-evidence) — mirrors generate-direction
+      # exactly: recompute the artifact path and confirm a real, parseable HTML file
+      # was (re)written. Emits the candidate object + the `renderable` gate flag.
+      verifying:
+        goal: Verify the agent wrote a real, renderable HTML candidate.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.candidate-renderable
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.seed"
+                - "$.workflow.input.candidate_id"
+            output:
+              renderable: "$.output.json.renderable"
+              candidate:  "$.output.json.candidate"
+              reason:     "$.output.json.reason"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.renderable == true" }
+          not_renderable:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.renderable != true" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

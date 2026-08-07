@@ -1,0 +1,196 @@
+# orchestrators/flow.rollout.surface.yaml
+#
+# ==================== PER-SURFACE PIPELINE (IV-b) — spec §4b ================
+# The PER-SURFACE unit of work for flow.rollout, extracted into its own top-level
+# workflow so the parent can fan it out CONCURRENTLY with `kind: parallel`
+# (one branch per surface). The engine's fan-out primitive spawns `kind: workflow`
+# branches BY definitionId — it cannot inline a bespoke multi-state chain per
+# branch — so the apply → token-adherence → detect → gate → bounded-retry chain
+# that used to live as the sequential-cursor body of flow.rollout is now this
+# self-contained flow (mirrors cognitive/flow.fix-ticket-batch-item, the blessed
+# per-item precedent). It REUSES the identical sub-caps at the identical wiring —
+# cap.implement.apply-design-system, cap.verify.token-adherence,
+# cap.verify.detect-antipatterns — with NO reimplementation.
+#
+# This is the PRODUCTION twin: the `applying` leaf calls the REAL model-driven
+# apply cap (design/cap.implement.apply-design-system, a `kind: agent` step bound
+# to the `rollout` affinity → deepseek). The offline twin
+# (flow.rollout.surface.offline) differs in EXACTLY that one leaf (the
+# deterministic stub design/cap.run.apply-design-system) and is otherwise
+# byte-identical.
+#
+# ANTI-REGRESSION SEMANTICS (the heart, per-surface): a surface still off-system
+# after its bounded retry budget ends this flow at `failed` (outcome: failure).
+# As a parent-parallel branch, a `failed` child returns ExecutorError::Permanent
+# → the parent counts it in the fan-in `failed_count`, which the parent's gate
+# folds into ROLLOUT_REGRESSED. An adherent surface ends `done` (success) and its
+# rolled record rides out in the branch output.
+# ===========================================================================
+
+workflows:
+
+  flow.rollout.surface:
+    lifecycle: experimental
+    description: >
+      Roll ONE surface to the captured token contract: the REAL `rollout`-affinity
+      agent (deepseek) EDITS the target repo's surface file in place to CONSUME the
+      central tokens, GATED by the deterministic token-adherence heart (anti-
+      regression) + the detect usability floor. Pass ⇒ `done` (the rolled record is
+      the branch output) ; off-system with budget ⇒ bounded retry ; exhausted ⇒
+      `failed` (the parent parallel folds this into ROLLOUT_REGRESSED). The offline
+      twin (flow.rollout.surface.offline) drives the same chain with a stub apply.
+    inputs:
+      # The single surface descriptor { id, file, layout_type } this branch rolls
+      # (the parent parallel passes one array element per branch via $.branch.value).
+      surface:      { type: object,  required: true }
+      # Absolute path to the TARGET REPO whose surface file is EDITED IN PLACE.
+      repo_root:    { type: string,  default: "" }
+      # The captured token contract { colors, fonts, scale }.
+      tokens:       { type: object,  default: {} }
+      # The repo-relative path to the ONE central token source the surface CONSUMES.
+      token_target: { type: string,  default: "src/styles/global.css" }
+      # Absolute path to this pack's scripts-library/ (threaded to the gate caps).
+      scripts_dir:  { type: string,  default: "" }
+      # Bounded per-surface retry budget before this surface flags off-system.
+      max_retry:    { type: integer, default: 1 }
+    outputs:
+      rolled:     { type: object }
+      adherent:   { type: boolean }
+      off_system: { type: array }
+    # Every declared output seeds its honest empty floor here (V24) and is
+    # overwritten on the success edge; the surface's own id rides out inside the
+    # `rolled` record (rolled.id), so no separate surface_id output is needed.
+    initialContext:
+      retry:                  0
+      rolled_surface:         {}
+      rolled:                 {}
+      tok_adherent:           true
+      off_system:             []
+      tok_count:              0
+      cand_antipattern_count: 0
+      fail_count:             0
+      adherent:               false
+    initialState: applying
+    states:
+
+      # APPLY one surface — the REAL model-driven cap (the ONLY leaf that differs
+      # from the offline twin): a `rollout`-affinity agent EDITS the target repo's
+      # existing file (repo_root/<surface.file>) IN PLACE to the token contract +
+      # layout-type; a deterministic verifier confirms the in-place write.
+      applying:
+        goal: Roll the surface to the token contract in place (real deepseek).
+        transitions:
+          apply:
+            target: verifying_tokens
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.implement.apply-design-system
+              use:
+                inputs:
+                  repo_root:    "$.workflow.input.repo_root"
+                  surface:      "$.workflow.input.surface"
+                  tokens:       "$.workflow.input.tokens"
+                  token_target: "$.workflow.input.token_target"
+                outputs:
+                  "$.context.rolled_surface": rolled
+
+      # GATE 1 — THE ANTI-REGRESSION HEART: token-adherence. `count` (an integer)
+      # is the scalar the gate branches on.
+      verifying_tokens:
+        goal: Assert the rolled surface uses ONLY the design system's tokens.
+        transitions:
+          verify:
+            target: verifying_detect
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.token-adherence
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  artifact:    "$.context.rolled_surface.artifact"
+                  tokens:      "$.workflow.input.tokens"
+                outputs:
+                  "$.context.tok_adherent": adherent
+                  "$.context.off_system":   off_system
+                  "$.context.tok_count":    count
+
+      # GATE 2 — REUSED usability floor: detect-antipatterns (blocking-only count).
+      verifying_detect:
+        goal: Run the deterministic usability floor over the rolled surface.
+        transitions:
+          detect:
+            target: tallying
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.detect-antipatterns
+              use:
+                inputs:
+                  artifact: "$.context.rolled_surface.artifact"
+                outputs:
+                  "$.context.cand_antipattern_count": antipattern_count
+
+      # TALLY — fold both gate verdicts into ONE scalar the surface gate branches on
+      # (fail_count == 0 ⇔ token-adherent AND detect-clean). Avoids an OR guard.
+      tallying:
+        goal: Combine the token-adherence + detect verdicts into a single fail count.
+        transitions:
+          tally:
+            target: surface_gate
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              fail_count: { add: ["$.context.tok_count", "$.context.cand_antipattern_count"] }
+
+      # SURFACE GATE — commodity can't regress: pass ⇒ done (mark adherent + emit
+      # the rolled record as the branch output) ; fail with retry budget ⇒ re-roll ;
+      # fail exhausted ⇒ failed (the parent parallel folds this into
+      # ROLLOUT_REGRESSED via failed_count).
+      surface_gate:
+        transitions:
+          collect:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.fail_count == 0" }
+            output:
+              adherent: { set: true }
+              rolled:   "$.context.rolled_surface"
+          retry:
+            target: retrying
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.fail_count > 0" }
+              - { kind: expr, expr: "$.context.retry < $.workflow.input.max_retry" }
+          regress:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.fail_count > 0" }
+              - { kind: expr, expr: "$.context.retry >= $.workflow.input.max_retry" }
+
+      # RETRY — a non-adherent surface within budget: bump the attempt, re-roll the
+      # SAME surface.
+      retrying:
+        goal: Re-roll the non-adherent surface (bounded retry).
+        transitions:
+          retry:
+            target: applying
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              retry: { add: ["$.context.retry", 1] }
+
+      # DONE — the surface cleared both gates (adherent + rolled record written on
+      # the collect edge). The branch output carries the collected surface.
+      done:
+        terminal: true
+        outcome: success
+
+      # FAILED — still off-system after the retry budget. Ends failure so the
+      # parent parallel branch reports failed_count (⇒ ROLLOUT_REGRESSED).
+      failed:
+        terminal: true
+        outcome: failure

@@ -1,0 +1,53 @@
+# scripts-library/inspect.capture-incumbent.yaml
+#
+# Captures an EXISTING live site as a scored BASELINE candidate for the annealing
+# contact sheet — the "look at the current design as one of the alternatives" seam.
+# Thin bash wrapper over the pack's own `snapshot.mjs` (same scripts-library dir),
+# which renders a real URL with Puppeteer and emits a SELF-CONTAINED HTML snapshot
+# whose inline CSS reproduces the page geometry in the exact patterns features.mjs
+# already parses — so score-axes / detect / contact-sheet treat the incumbent
+# IDENTICALLY to a generated candidate (commensurable feature space).
+#
+#   Args: [scripts_dir, url, out_dir, candidate_id?]
+#     scripts_dir   absolute path to this pack's scripts-library/ (holds snapshot.mjs)
+#     url           the live URL of the existing design to capture
+#     out_dir       directory to write the snapshot candidate HTML into
+#     candidate_id  stable id (default "incumbent") → candidate-<id>.html
+#
+# Emits on stdout (ALWAYS exit 0 — routing is done by the cap's gate on `captured`):
+#   { captured:true,  reason:"", candidate:{ id, artifact, seed:{}, generator:"incumbent-snapshot-v1" } }
+#   { captured:false, reason:"INCUMBENT_ARGS_MISSING"|"SNAPSHOT_TOOL_UNRESOLVED"|"INCUMBENT_CAPTURE_FAILED", ... }
+# A capture failure is a first-class verdict (the baseline is optional), NOT a crash.
+version: "1.0.0"
+scripts:
+  inspect.capture-incumbent:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      URL="${2:-}"
+      OUT_DIR="${3:-}"
+      ID="${4:-incumbent}"
+
+      if [ -z "$URL" ] || [ -z "$OUT_DIR" ]; then
+        echo '{"captured":false,"reason":"INCUMBENT_ARGS_MISSING","candidate":{}}'
+        exit 0
+      fi
+      SNAP="$SCRIPTS_DIR/snapshot.mjs"
+      if [ ! -f "$SNAP" ]; then
+        printf '{"captured":false,"reason":"SNAPSHOT_TOOL_UNRESOLVED","looked":"%s","candidate":{}}\n' "$SNAP"
+        exit 0
+      fi
+      mkdir -p "$OUT_DIR"
+      ARTIFACT="$OUT_DIR/candidate-$ID.html"
+
+      # snapshot.mjs writes the snapshot HTML to ARTIFACT and prints its geo blob to
+      # STDERR; we discard stderr and route on the file it wrote.
+      if node "$SNAP" "$URL" "$ARTIFACT" 2>/dev/null && [ -s "$ARTIFACT" ]; then
+        printf '{"captured":true,"reason":"","candidate":{"id":"%s","artifact":"%s","seed":{},"generator":"incumbent-snapshot-v1"}}\n' "$ID" "$ARTIFACT"
+      else
+        printf '{"captured":false,"reason":"INCUMBENT_CAPTURE_FAILED","url":"%s","candidate":{}}\n' "$URL"
+      fi

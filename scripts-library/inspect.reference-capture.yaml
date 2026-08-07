@@ -1,0 +1,52 @@
+# scripts-library/inspect.reference-capture.yaml
+#
+# REFERENCE GATHERING (spec §4 front-door grounding). Thin, honest wrapper over
+# the pack core `reference-capture.mjs` — which itself reuses the pack's shared
+# render-screenshot.mjs (external URL → bounded screenshot) + reference-dna.mjs
+# (external URL → measured structural DNA). We DO NOT re-implement capture here;
+# single source of truth stays in reference-capture.mjs. Because the engine
+# exposes no pack-directory scope, `scripts_dir` (the absolute path to this
+# pack's scripts-library/, holding those helpers) is threaded in as the caller.
+#
+#   Args: [scripts_dir, reference_urls, internal_images, out_dir]
+#     scripts_dir      abs path to this pack's scripts-library/ (holds the helpers)
+#     reference_urls   JSON array string of { name, url } external references ("[]"=none)
+#     internal_images  JSON array string of ABSOLUTE moodboard image paths ("[]"=none)
+#     out_dir          where ref-<name>.png screenshots are written
+#
+# Emits reference-capture.mjs's JSON verbatim on stdout —
+#   { reference_images, reference_images_json, reference_dna, notes }
+# — auto-parsed to $.output.json.* for the cap's output mapping.
+# `reference_images_json` is a STRING (JSON array of abs paths) so it flows through
+# the engine `images:` array-flatten on downstream agent steps.
+#
+# Fail-fast:
+#   exit 2 OUT_DIR_UNSET           — no out_dir argument
+#   exit 5 CAPTURE_TOOL_UNRESOLVED — reference-capture.mjs not found under scripts_dir
+# A single bad ref/image never fails the run — it is recorded in `notes` and
+# skipped (grounding stays in whatever captured).
+version: "1.0.0"
+scripts:
+  inspect.reference-capture:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env bash
+      set -uo pipefail
+      SCRIPTS_DIR="${1:-}"
+      REFS="${2:-[]}"
+      INTERNAL="${3:-[]}"
+      OUT_DIR="${4:-}"
+
+      if [ -z "$OUT_DIR" ]; then
+        echo '{"error":"OUT_DIR_UNSET"}' >&2
+        exit 2
+      fi
+      CAPTURE="$SCRIPTS_DIR/reference-capture.mjs"
+      if [ ! -f "$CAPTURE" ]; then
+        printf '{"error":"CAPTURE_TOOL_UNRESOLVED","looked":"%s"}\n' "$CAPTURE" >&2
+        exit 5
+      fi
+
+      exec node "$CAPTURE" "$REFS" "$INTERNAL" "$OUT_DIR" "$SCRIPTS_DIR"

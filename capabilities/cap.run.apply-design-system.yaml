@@ -34,13 +34,14 @@ workflows:
     verb: run
     lifecycle: experimental
     description: >
-      STUB (Increment IV-a/c): roll a surface to the captured design system by
+      STUB (Increment IV-a/c): roll a surface to CONSUME the CENTRAL design system by
       EDITING the existing target file IN PLACE — reads repo_root/<surface.file>
-      and rewrites ONLY its design tokens (colors → palette hexes, font-family →
-      the contract stack) while preserving structure/logic, so the edited file uses
-      ONLY the contract's token palette + font stack (token-adherent + detect-clean
-      by construction) and the capture → apply → gate → collect spine is exercisable
-      offline. NOT deepseek, NOT an LLM — replaced by the real coding-affinity apply
+      and normalizes its design tokens to the contract (colors → palette hexes,
+      font-family → the contract stack) while preserving structure/logic, so the
+      edited page uses ONLY the central contract's token palette + font stack
+      (token-adherent + detect-clean by construction, standing in for the real
+      agent's `var(--...)` consumption) and the capture → centralize → apply → gate →
+      collect spine is exercisable offline. NOT deepseek, NOT an LLM — replaced by the real coding-affinity apply
       cap in Increment IV-c. A `defect:true` surface injects an off-system
       color/font into the edited file to exercise the gate's BLOCK path.
     snippet:
@@ -53,6 +54,11 @@ workflows:
         surface: { type: object, required: true }
         # The captured token contract { colors, fonts, scale } as a JSON object.
         tokens:  { type: object, required: true }
+        # The repo-relative path to the ONE central token source the page CONSUMES.
+        # Declared for symmetry with the real apply cap + the orchestrator's threading;
+        # the deterministic stub normalizes to the contract in place (token-adherent by
+        # construction), so it does not need to read the central file.
+        token_target: { type: string, default: "" }
         # Optional retry attempt number (carried into the record only).
         attempt: { type: integer, default: 0 }
       outputs:

@@ -39,6 +39,9 @@ scripts:
       SCRIPTS_DIR="${1:-}"
       CANDIDATES="${2:-}"
       OUT_DIR="${3:-}"
+      # 4th arg: the optional incumbent BASELINE record (JSON) — prepended as
+      # candidate-0 by contact-sheet.mjs. "" ⇒ no baseline (generated set only).
+      BASELINE="${4:-}"
 
       if [ -z "$SCRIPTS_DIR" ] || [ -z "$CANDIDATES" ] || [ -z "$OUT_DIR" ]; then
         echo '{"error":"ARGS_UNSET","need":["scripts_dir","candidates_json","out_dir"]}' >&2
@@ -49,4 +52,19 @@ scripts:
         printf '{"error":"CONTACT_SHEET_TOOL_UNRESOLVED","looked":"%s"}\n' "$TOOL" >&2
         exit 5
       fi
-      exec node "$TOOL" "$CANDIDATES" "$OUT_DIR"
+      OUT="$(node "$TOOL" "$CANDIDATES" "$OUT_DIR" "$BASELINE")"; rc=$?
+      if [ $rc -ne 0 ]; then exit $rc; fi
+      # Best-effort LOCAL auto-open of the self-contained sheet — the prune happens
+      # on-disk, never round-tripped to a remote presenter. Never fatal; skipped when
+      # PRAXEC_NO_OPEN is set (headless CI / the offline drive-test twin) or when no
+      # opener exists. stdout stays EXACTLY the tool's JSON (final printf).
+      if [ -z "${PRAXEC_NO_OPEN:-}" ]; then
+        SHEET="$(printf '%s' "$OUT" | sed -n 's/.*"artifact":"\([^"]*\)".*/\1/p')"
+        if [ -n "$SHEET" ]; then
+          if command -v xdg-open >/dev/null 2>&1; then (xdg-open "$SHEET" >/dev/null 2>&1 &)
+          elif command -v open >/dev/null 2>&1; then (open "$SHEET" >/dev/null 2>&1 &)
+          elif command -v wslview >/dev/null 2>&1; then (wslview "$SHEET" >/dev/null 2>&1 &)
+          fi
+        fi
+      fi
+      printf '%s' "$OUT"

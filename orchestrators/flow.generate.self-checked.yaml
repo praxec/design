@@ -1,0 +1,211 @@
+# orchestrators/flow.generate.self-checked.yaml
+#
+# ================= SELF-CHECKED GENERATION — a drop-in for generation =================
+# Same input/output contract as cap.implement.generate-direction (PLUS `scripts_dir`
+# and `selfcheck_rounds`), so it swaps into the anneal spine's `generating` state
+# with a ONE-LINE definitionId change. Where the plain cap generates ONCE, this
+# orchestrator adds a governed REFINE-WITH-VISION loop: generate a candidate, render
+# a screenshot of how it ACTUALLY looks, hand that render (+ the references) back to
+# the design model, and let it rewrite the candidate to close the gap — bounded by
+# `selfcheck_rounds`.
+#
+# LOOP:
+#   generating → rendering_self → check_gate → refining → bumping → rendering_self ↺
+#                                            └────────────────────────────→ done
+#
+# GROUNDING (reuses proven patterns — no divergent shapes):
+#   - GENERATE + REFINE as `kind: workflow` sub-instances (run-tree lineage), the
+#     same composition the anneal spine already uses.
+#   - RENDER as a `kind: script` leaf (run.render-image) — a failed render yields
+#     "" and the refine degrades to references-only; never crashes the loop.
+#   - ROUND BUMP on a DEDICATED noop-executor state (`bumping`): an `output:`
+#     mutation on a BARE guard transition is NOT applied (flow.pressure-test's V2
+#     gotcha) — the `sc_round` counter MUST be bumped on a real noop-executor state,
+#     else the loop never advances and spins forever.
+#
+# selfcheck_rounds default 1 = generate then ONE refine pass (sc_round 0 → refine →
+# bump to 1 → re-render the refined candidate → 1 >= 1 → done). 0 ⇒ generate-only
+# (behaves like the plain cap). N ⇒ generate + N refine passes.
+#
+# Requires (design/*): cap.implement.generate-direction, cap.implement.refine-candidate,
+# and the run.render-image script (scripts-library/). `scripts_dir` (abs path to this
+# pack's scripts-library/, holding render-screenshot.mjs) is threaded in.
+workflows:
+
+  # ---------------------------------------------------------------------
+  # The SELF-CHECK RENDER leaf, wrapped as a snippet cap. A thin sub-instance
+  # over the run.render-image script so the orchestrator can consume the abs PNG
+  # path (or "") via use.outputs — a bare `kind: script` transition `output:` map
+  # is NOT recognized as a slot-writer for a downstream `use.inputs` reference
+  # (V13/UNREACHABLE_SLOT), the same reason the anneal spine wraps EVERY script
+  # leaf (cap.inspect.next-seed / collect-candidate) in a co-located snippet cap.
+  # "" ⇒ no self-check image (a failed render degrades the refine to references-only).
+  # ---------------------------------------------------------------------
+  cap.run.render-selfcheck:
+    verb: run
+    lifecycle: experimental
+    description: >
+      Render a screenshot of how a candidate currently renders (the self-check
+      image the design model SEES), a thin snippet wrapper over the run.render-image
+      script so the orchestrator consumes the abs PNG path (or "") via use.outputs.
+    snippet:
+      inputs:
+        scripts_dir:  { type: string, required: true }
+        artifact:     { type: string, default: "" }
+        out_dir:      { type: string, required: true }
+        candidate_id: { type: string, default: "" }
+      outputs:
+        image: { type: string }
+    initialState: rendering
+    initialContext:
+      image: ""
+    states:
+      rendering:
+        goal: Render the candidate's self-check screenshot (or "" on any failure).
+        transitions:
+          render:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: run.render-image
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.artifact"
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.candidate_id"
+            output:
+              image: "$.output.json.image"
+      done: { terminal: true }
+
+  flow.generate.self-checked:
+    lifecycle: experimental
+    description: >
+      Self-checked generation: generate one candidate, render a screenshot of how
+      it actually looks, then let the design model SEE that render (+ the references)
+      and rewrite the candidate to close the gap — bounded by selfcheck_rounds.
+      Drop-in for cap.implement.generate-direction (same input/output contract plus
+      scripts_dir + selfcheck_rounds); swaps in with a one-line definitionId change.
+    inputs:
+      # ---- mirrored from cap.implement.generate-direction (SAME contract) ----
+      out_dir:      { type: string, required: true }
+      seed:         { type: string, default: "{}" }
+      profile:      { type: string, default: "" }
+      candidate_id: { type: string, default: "" }
+      content_path: { type: string, default: "" }
+      direction_brief: { type: string, default: "" }
+      reference_images_json: { type: string, default: "" }
+      # ---- self-check additions ----
+      # Abs path to this pack's scripts-library/ (holds render-screenshot.mjs) — the
+      # engine exposes no pack-dir scope, so the operator threads it (same seam the
+      # anneal spine uses for score.mjs).
+      scripts_dir:      { type: string, default: "" }
+      # How many refine-with-vision passes to run. 1 = generate + ONE refine (default).
+      selfcheck_rounds: { type: integer, default: 1 }
+    outputs:
+      candidate: { type: object }
+    # Seed every declared output + the loop slots read before their first writer.
+    initialContext:
+      candidate:    {}
+      render_image: ""
+      sc_round:     0
+    initialState: generating
+    states:
+
+      # GENERATE one candidate — the plain generation cap (sub-instance, run-tree
+      # lineage). Fails fast CANDIDATE_NOT_RENDERABLE inside the child.
+      generating:
+        goal: Generate the initial candidate for the seed (sub-instance).
+        transitions:
+          generate:
+            target: rendering_self
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.implement.generate-direction
+              use:
+                inputs:
+                  out_dir:         "$.workflow.input.out_dir"
+                  seed:            "$.workflow.input.seed"
+                  profile:         "$.workflow.input.profile"
+                  candidate_id:    "$.workflow.input.candidate_id"
+                  content_path:    "$.workflow.input.content_path"
+                  direction_brief: "$.workflow.input.direction_brief"
+                  reference_images_json: "$.workflow.input.reference_images_json"
+                outputs:
+                  "$.context.candidate": candidate
+
+      # RENDER the current candidate to a self-check screenshot the model will SEE.
+      # A failed render yields "" (references-only refine) — never crashes the loop.
+      rendering_self:
+        goal: Render a screenshot of how the current candidate actually looks (sub-instance).
+        transitions:
+          render:
+            target: check_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.render-selfcheck
+              use:
+                inputs:
+                  scripts_dir:  "$.workflow.input.scripts_dir"
+                  artifact:     "$.context.candidate.artifact"
+                  out_dir:      "$.workflow.input.out_dir"
+                  candidate_id: "$.workflow.input.candidate_id"
+                outputs:
+                  "$.context.render_image": image
+
+      # BRANCH on the round budget: another refine pass, or finish.
+      check_gate:
+        transitions:
+          refine:
+            target: refining
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.sc_round < $.workflow.input.selfcheck_rounds" }
+          finish:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.sc_round >= $.workflow.input.selfcheck_rounds" }
+
+      # REFINE-WITH-VISION over the current candidate: the model SEES its own render
+      # (+ references) and rewrites to close the gap. Re-emits the refined candidate.
+      refining:
+        goal: Refine the candidate against its own render (sub-instance).
+        transitions:
+          refine:
+            target: bumping
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.implement.refine-candidate
+              use:
+                inputs:
+                  out_dir:         "$.workflow.input.out_dir"
+                  candidate_id:    "$.workflow.input.candidate_id"
+                  seed:            "$.workflow.input.seed"
+                  profile:         "$.workflow.input.profile"
+                  direction_brief: "$.workflow.input.direction_brief"
+                  reference_images_json: "$.workflow.input.reference_images_json"
+                  render_image:    "$.context.render_image"
+                  content_path:    "$.workflow.input.content_path"
+                outputs:
+                  "$.context.candidate": candidate
+
+      # BUMP the self-check round on a DEDICATED noop-executor state (an output
+      # mutation on a bare guard transition is NOT applied — V2 gotcha), then loop
+      # back to re-render the REFINED candidate.
+      bumping:
+        goal: Increment the self-check round; loop back to re-render.
+        transitions:
+          bump:
+            target: rendering_self
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              sc_round: { add: ["$.context.sc_round", 1] }
+
+      done:
+        terminal: true
+        outcome: success

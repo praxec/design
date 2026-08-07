@@ -1,0 +1,74 @@
+# scripts-library/inspect.baseline-record.yaml
+#
+# The INCUMBENT-BASELINE RECORD assembler (the "look at the current design as one
+# of the alternatives" seam). Given the captured incumbent candidate + its
+# thumbnail + its HONEST scores/detect, mint a contact-sheet record in the EXACT
+# eligible-record shape the sheet + prune consume (from inspect.collect-candidate),
+# so the baseline renders identically to a generated candidate — EXCEPT it is:
+#   - ALWAYS emitted (never gated on usability — the human must see what exists
+#     today even if the current site has usability findings), and
+#   - marked `baseline: true` with a "CURRENT DESIGN (baseline)" name so the sheet
+#     gives it a distinct BASELINE badge and prepends it as candidate-0.
+#
+# It is deliberately kept OUT of the `eligible` ledger by the orchestrator (stored
+# in a separate `$.context.baseline` slot) so it never affects DIVERGENCE_COLLAPSED
+# (that stays keyed to GENERATED eligibles only).
+#
+# The advisory taste fields are pinned NEUTRAL (distinctive:false, fit_ok:false,
+# tau:0, fit_floor:0): the baseline is the reference point, not a scored contender.
+#
+# Args (the script-arg renderer JSON-stringifies object/array values):
+#   $1 — candidate (JSON object; { id, artifact, seed, generator } from capture-incumbent)
+#   $2 — thumbnail (JSON object; { id, artifact } from cap.run.render-thumbnail)
+#   $3 — G (number; from cap.inspect.score-axes)
+#   $4 — fit (JSON object; from cap.inspect.score-axes, carries .score)
+#   $5 — antipattern_count (int; from cap.verify.detect-antipatterns)
+#   $6 — warnings (JSON array; non-blocking quality-flags, from detect)
+#
+# Emits ONE JSON verdict on stdout, read at $.output.json.record; ALWAYS exits 0:
+#   { record: { id, name, G, fit, thumbnail, artifact, seed, antipattern_count,
+#               warnings, warning_count, distinctive, fit_ok, tau, fit_floor, baseline } }
+version: "1.0.0"
+scripts:
+  inspect.baseline-record:
+    verb: inspect
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic baseline-record assembly (always emits; never gates).
+      function j(v, d) { try { const x = JSON.parse(v); return x === undefined ? d : x; } catch { return d; } }
+      const candidate = j(process.argv[2], {}) || {};
+      const thumbnail = j(process.argv[3], {}) || {};
+      const G = parseFloat(process.argv[4]);
+      const fit = j(process.argv[5], null);
+      const antipatternCount = parseInt(process.argv[6] || "0", 10);
+      const warnings = j(process.argv[7], []) || [];
+
+      const fitScore = fit && typeof fit.score === "number" ? fit.score : null;
+      const gStr = Number.isFinite(G) ? G.toFixed(2) : "n/a";
+      const fitStr = fitScore === null ? "n/a" : String(fitScore);
+
+      const record = {
+        id: candidate.id || "incumbent",
+        // The human-prune display title: unmistakably the CURRENT design.
+        name: `CURRENT DESIGN (baseline) · G=${gStr} · fit=${fitStr}`,
+        G: Number.isFinite(G) ? G : null,
+        fit,
+        thumbnail,
+        artifact: candidate.artifact || "",
+        seed: {},
+        antipattern_count: antipatternCount,
+        warnings,
+        warning_count: warnings.length,
+        // Advisory taste fields pinned NEUTRAL — the baseline is the reference
+        // point, never a scored contender in the taste ranking.
+        distinctive: false,
+        fit_ok: false,
+        tau: 0,
+        fit_floor: 0,
+        // The flag the contact sheet reads to badge + prepend this record.
+        baseline: true,
+      };
+
+      console.log(JSON.stringify({ record }));

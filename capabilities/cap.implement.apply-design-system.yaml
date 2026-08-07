@@ -59,6 +59,10 @@ workflows:
         surface: { type: object, required: true }
         # The captured token contract { colors, fonts, scale } as a JSON object.
         tokens:  { type: object, required: true }
+        # The repo-relative path to the ONE central token source (stylesheet) that
+        # holds the contract as `:root` custom properties. The surface CONSUMES these
+        # central tokens (via var(--...)) — it MUST NOT re-declare them.
+        token_target: { type: string, required: true }
         # Optional retry attempt number (carried into the record).
         attempt: { type: integer, default: 0 }
       outputs:
@@ -117,16 +121,35 @@ workflows:
 
                 surface: {{ $.workflow.input.surface }}
 
+                WRITE GUARD (a failed run otherwise): Edit ONLY the single file
+                named in this task (the surface file). You MUST NOT modify
+                package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, any
+                astro.config.*, tsconfig*, or any other build/config/dependency
+                file, and you MUST NOT run any package manager or add
+                dependencies. Touching any file other than your one target is a
+                failed run.
+
                 PRESERVE the file's existing content, structure, framework, markup,
                 imports, and logic (it is `.astro` / `.css` / `.tsx` — keep the
                 markup, frontmatter, imports, and scripts). Change ONLY the design:
-                the tokens (colors / fonts / type sizes) and the classes/styles that
-                carry them. Do NOT convert the file to a self-contained HTML
-                document and do NOT drop or reorder content.
+                make the page CONSUME the CENTRAL tokens and REMOVE any hardcoded
+                off-system colors/fonts. Do NOT convert the file to a self-contained
+                HTML document and do NOT drop or reorder content.
+
+                The design system's tokens ALREADY live — defined ONCE — as `:root`
+                CSS custom properties in the central token source:
+                  {{ $.workflow.input.token_target }}
+                CONSUME them: reference the custom properties via `var(--...)` (and
+                the shared classes defined in that central file) for every color,
+                font, and type size. Do NOT paste hex/font VALUES into this page and
+                do NOT re-declare the tokens here — the central file is the ONLY place
+                they live. This page is a CONSUMER of the single source of truth.
 
                 Use ONLY this token contract — its palette hexes and font stack are
                 a CLOSED set; a deterministic gate will BLOCK any off-system color
-                or font:
+                or font, so a page that hardcodes an off-contract value FAILS while a
+                page that references the central `var(--token)` / shared classes
+                passes:
                   tokens = {{ $.workflow.input.tokens }}
 
                 Adapt the design to the surface's layout_type (landing / blog /

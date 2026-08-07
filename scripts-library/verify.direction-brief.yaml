@@ -1,0 +1,143 @@
+# scripts-library/verify.direction-brief.yaml
+#
+# The coding-write-evidence VERIFIER for the direction front-end cap
+# (design/cap.research.direction). The front-end agent's own claim is NOT trusted:
+# this deterministic step re-opens `brief.json` at the computed path, parses it,
+# and schema-validates it into the typed annealing inputs {app_type, profile,
+# direction_brief, seeds[]}. It is the fail-fast BRIEF_UNPARSEABLE / BRIEF_INVALID
+# gate — the symmetric counterpart of verify.candidate-renderable.
+#
+# CRITICAL: seeds are validated against the SAME closed constraint vocabulary the
+# scorer (score.mjs SEED_CHECKS) understands — corners/type/grid/composition/
+# palette/gradient/rules — so a malformed seed is caught HERE, at the front door,
+# not silently downstream as UNKNOWN_SEED_CONSTRAINT.
+#
+#   Args: [out_dir, n?]
+#     out_dir  directory the agent was told to write brief.json into
+#     n        expected seed count (advisory: >=1 required; !=n emits a warning)
+#
+# Emits (ALWAYS exit 0 — routing is done by the cap's verify_gate on `parsed`):
+#   { parsed:true,  reason:"", app_type, profile:"<json>", direction_brief, seeds:[...], warnings:[...] }
+#   { parsed:false, reason:"BRIEF_UNPARSEABLE"|"BRIEF_INVALID", message, app_type:"", profile:"", direction_brief:"", seeds:[] }
+# Only a genuinely missing arg is a hard error (exit 2).
+version: "1.0.0"
+scripts:
+  verify.direction-brief:
+    verb: verify
+    lifecycle: experimental
+    source: design
+    body: |
+      #!/usr/bin/env node
+      // Deterministic brief verifier + schema validator. No LLM, no network.
+      const { existsSync, readFileSync } = require("node:fs");
+      const { join } = require("node:path");
+
+      const outDir = process.argv[2];
+      if (!outDir) {
+        console.error(JSON.stringify({ error: "OUT_DIR_UNSET" }));
+        process.exit(2);
+      }
+      const n = process.argv[3] ? parseInt(process.argv[3], 10) : 0;
+
+      // The CLOSED seed vocabulary — must stay in lockstep with score.mjs SEED_CHECKS.
+      const ALLOWED = {
+        corners:     ["square", "round"],
+        type:        ["serif", "sans", "mono", "display"],
+        grid:        ["asymmetric", "symmetric"],
+        composition: ["off-center", "centered"],
+        palette:     ["bold", "restrained"],
+        gradient:    ["none", "subtle"],
+        rules:       ["heavy", "light"],
+      };
+      const SEED_KEYS = Object.keys(ALLOWED);
+
+      const invalid = (reason, message) =>
+        console.log(JSON.stringify({
+          parsed: false, reason, message,
+          app_type: "", profile: "", direction_brief: "", seeds: [],
+        }));
+
+      const briefPath = join(outDir, "brief.json");
+      if (!existsSync(briefPath)) {
+        invalid("BRIEF_UNPARSEABLE", `brief.json was not written: ${briefPath}`);
+        process.exit(0);
+      }
+      let brief;
+      try {
+        brief = JSON.parse(readFileSync(briefPath, "utf8"));
+      } catch (e) {
+        invalid("BRIEF_UNPARSEABLE", `brief.json is not valid JSON: ${e.message}`);
+        process.exit(0);
+      }
+      if (brief === null || typeof brief !== "object" || Array.isArray(brief)) {
+        invalid("BRIEF_INVALID", "brief.json must be a JSON object");
+        process.exit(0);
+      }
+
+      const warnings = [];
+
+      // app_type
+      if (typeof brief.app_type !== "string" || brief.app_type.trim() === "") {
+        invalid("BRIEF_INVALID", "app_type must be a non-empty string");
+        process.exit(0);
+      }
+      const app_type = brief.app_type.trim();
+
+      // profile: { app, needs:[non-empty] }
+      const profile = brief.profile;
+      if (profile === null || typeof profile !== "object" || Array.isArray(profile) ||
+          !Array.isArray(profile.needs) || profile.needs.length === 0 ||
+          !profile.needs.every((x) => typeof x === "string" && x.trim() !== "")) {
+        invalid("BRIEF_INVALID", "profile must be an object with a non-empty string[] `needs`");
+        process.exit(0);
+      }
+
+      // direction_brief
+      if (typeof brief.direction_brief !== "string" || brief.direction_brief.trim() === "") {
+        invalid("BRIEF_INVALID", "direction_brief must be a non-empty string");
+        process.exit(0);
+      }
+
+      // seeds: array of fully-specified, in-vocabulary constraint objects
+      const seeds = brief.seeds;
+      if (!Array.isArray(seeds) || seeds.length === 0) {
+        invalid("BRIEF_INVALID", "seeds must be a non-empty array");
+        process.exit(0);
+      }
+      for (let i = 0; i < seeds.length; i++) {
+        const s = seeds[i];
+        if (s === null || typeof s !== "object" || Array.isArray(s)) {
+          invalid("BRIEF_INVALID", `seed[${i}] must be an object`);
+          process.exit(0);
+        }
+        const keys = Object.keys(s);
+        for (const k of keys) {
+          if (!SEED_KEYS.includes(k)) {
+            invalid("BRIEF_INVALID", `seed[${i}] has unknown key "${k}" (allowed: ${SEED_KEYS.join(", ")})`);
+            process.exit(0);
+          }
+          if (!ALLOWED[k].includes(s[k])) {
+            invalid("BRIEF_INVALID", `seed[${i}].${k} = "${s[k]}" is not one of: ${ALLOWED[k].join(", ")}`);
+            process.exit(0);
+          }
+        }
+        const missing = SEED_KEYS.filter((k) => !(k in s));
+        if (missing.length) {
+          invalid("BRIEF_INVALID", `seed[${i}] is missing required keys: ${missing.join(", ")}`);
+          process.exit(0);
+        }
+      }
+      if (n > 0 && seeds.length !== n) {
+        warnings.push(`expected ${n} seeds, got ${seeds.length}`);
+      }
+
+      // Valid. Emit typed outputs; profile as a JSON STRING (score-axes wants a string).
+      console.log(JSON.stringify({
+        parsed: true,
+        reason: "",
+        app_type,
+        profile: JSON.stringify(profile),
+        direction_brief: brief.direction_brief.trim(),
+        seeds,
+        warnings,
+      }));

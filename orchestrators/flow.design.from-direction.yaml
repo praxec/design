@@ -1,0 +1,228 @@
+# orchestrators/flow.design.from-direction.yaml
+#
+# ================= THE FRONT DOOR: direction → scored options =================
+# The reusable top orchestrator that makes the pack direction-driven: the operator
+# sets ONE top-level prose DIRECTION (+ optional references + the target's real
+# content) and the pack does the rest — derive the app-type/profile/seeds via the
+# governed front-end (cap.research.direction), then run the proven annealing spine
+# (flow.anneal.structure-first) over them, threading the aesthetic direction to
+# every generation leaf. The human prune-and-steer (inside the anneal spine) is the
+# taste fitness function; this flow just removes the hand-authored-seeds coupling.
+#
+# DIRECTION-AGNOSTIC: nothing about any specific aesthetic lives here. The same
+# flow serves the next design effort with a different `direction`. The ONLY
+# hand-surface is: direction, references, content_path, out_dir, scripts_dir, n,
+# max_rounds — never seeds/profile/app_type.
+#
+# GROUNDING: two `kind: workflow` sub-instances (research → anneal), the same
+# composition pattern the anneal spine already uses for its own leaves; run-tree
+# lineage records the whole chain. Fail-fast DIRECTION_UNSET (no direction ⇒
+# nothing to derive), mirroring anneal's PURPOSE_UNSET.
+#
+# Requires (design/*): cap.research.direction, flow.anneal.structure-first, and
+# everything the latter requires. `scripts_dir` (abs path to scripts-library/) and
+# `out_dir` (the run's artifacts dir) are threaded through, as the spine needs them.
+workflows:
+
+  flow.design.from-direction:
+    lifecycle: experimental
+    # Rich model-driven design generation is legitimately long: a single Kimi K3
+    # compose (real content + vision references + inline data-viz) can run ~25–30 min,
+    # and a multi-candidate spread is a multiple of that. The engine's default 30-min
+    # mission-deadline backstop (1800s of ACTIVE drive time) was cancelling these runs
+    # right before the human-prune park. Raise it to a generous, still-bounded 2h so a
+    # legitimate design run completes; the human gate + cost gates remain the real
+    # governors. (0 would disable the backstop entirely — kept bounded on purpose.)
+    missionDeadlineSecs: 7200
+    description: >
+      Direction-driven UI-design annealing: derive {app_type, profile,
+      direction_brief, seeds} from ONE prose direction (+ references + content) via
+      the governed front-end, then run the annealing spine over them with the
+      aesthetic direction threaded to every generation leaf. Reusable across design
+      efforts; the direction is the input, never coupled into the pack. Fail-fast
+      DIRECTION_UNSET.
+    inputs:
+      # The operator's top-level prose direction — the ONLY source of aesthetic
+      # intent. "" ⇒ DIRECTION_UNSET fail-fast.
+      direction:     { type: string,  default: "" }
+      # Optional free text: reference URLs / competitor names / DNA notes.
+      references:    { type: string,  default: "" }
+      # Optional external reference URLs to CAPTURE (screenshot + measured DNA): a
+      # JSON array STRING of { name, url }. "[]" ⇒ nothing to capture.
+      reference_urls: { type: string, default: "[]" }
+      # Optional internal moodboard images the operator dropped in: a JSON array
+      # STRING of ABSOLUTE image paths. "[]" ⇒ none.
+      internal_images: { type: string, default: "[]" }
+      # Optional RELATIVE filename (within out_dir) of the target page's real copy.
+      content_path:  { type: string,  default: "" }
+      # Optional app-type hint; "" ⇒ the front-end infers it.
+      app_type_hint: { type: string,  default: "" }
+      # Candidates per round / seeds to derive (the fan-out width).
+      n:             { type: integer, default: 3 }
+      # ADVISORY thresholds threaded to the spine (Increment I-f: non-gating).
+      tau:           { type: number,  default: 1.549 }
+      fit_floor:     { type: number,  default: 1.0 }
+      # Abs path to this pack's scripts-library/ (holds score.mjs) — the spine needs it.
+      scripts_dir:   { type: string,  default: "" }
+      # The run's artifacts dir (brief.json + candidates + content all live here).
+      out_dir:       { type: string,  default: "" }
+      # OPTIONAL incumbent baseline: the live URL of the EXISTING design to capture
+      # as candidate-0 on the contact sheet (scored honestly, kept out of the
+      # collapse logic). "" ⇒ no baseline.
+      incumbent_url: { type: string, default: "" }
+      # Self-check refine passes per candidate (vision loop). 0 ⇒ plain generation;
+      # 1 ⇒ generate + one visual self-correction.
+      selfcheck_rounds: { type: integer, default: 0 }
+      # Bounds the refine loop.
+      max_rounds:    { type: integer, default: 1 }
+    outputs:
+      # Surfaced from the front-end (what the pack derived from the direction).
+      app_type:        { type: string }
+      direction_brief: { type: string }
+      seeds:           { type: array }
+      # Passed through from the annealing spine.
+      eligible:        { type: array }
+      scored:          { type: array }
+      chosen:          { type: object }
+      round:           { type: integer }
+      reason:          { type: string }
+      steer:           { type: object }
+      feedback:        { type: array }
+    initialContext:
+      app_type:        ""
+      profile:         ""
+      direction_brief: ""
+      reference_images_json: "[]"
+      reference_dna:   ""
+      seeds:           []
+      eligible:        []
+      scored:          []
+      chosen:          {}
+      round:           0
+      reason:          ""
+      steer:           {}
+      feedback:        []
+    initialState: direction_gate
+    states:
+
+      # FAIL-FAST DIRECTION_UNSET: no direction ⇒ nothing to derive (mirrors
+      # anneal's PURPOSE_UNSET). The pack refuses to guess intent.
+      direction_gate:
+        transitions:
+          proceed:
+            target: gathering_refs
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.direction != ''" }
+          unset:
+            target: fail_direction
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.direction == ''" }
+
+      fail_direction:
+        goal: Record the DIRECTION_UNSET fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "DIRECTION_UNSET" }
+
+      # REFERENCE GATHERING (runs BEFORE research so seeds are grounded in what the
+      # references actually look like): capture external reference URLs → bounded
+      # screenshots + measured structural DNA, and validate operator moodboard
+      # images, into one visual set. Empty refs+images ⇒ reference_images_json="[]"
+      # + reference_dna="" (a no-op grounding, research proceeds text-only).
+      gathering_refs:
+        goal: Capture reference screenshots + moodboard + DNA (sub-instance).
+        transitions:
+          gather:
+            target: researching
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.reference-capture
+              use:
+                inputs:
+                  scripts_dir:     "$.workflow.input.scripts_dir"
+                  out_dir:         "$.workflow.input.out_dir"
+                  reference_urls:  "$.workflow.input.reference_urls"
+                  internal_images: "$.workflow.input.internal_images"
+                outputs:
+                  "$.context.reference_images_json": reference_images_json
+                  "$.context.reference_dna":         reference_dna
+
+      # THE FRONT-END: derive app_type + profile + direction_brief + seeds from the
+      # prose direction (governed design-affinity agent + deterministic verify),
+      # grounded in the captured references (images + measured DNA).
+      researching:
+        goal: Derive the annealing inputs from the direction (sub-instance).
+        transitions:
+          research:
+            target: annealing
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.research.direction
+              use:
+                inputs:
+                  out_dir:       "$.workflow.input.out_dir"
+                  direction:     "$.workflow.input.direction"
+                  references:    "$.workflow.input.references"
+                  content_path:  "$.workflow.input.content_path"
+                  n:             "$.workflow.input.n"
+                  app_type_hint: "$.workflow.input.app_type_hint"
+                  reference_images_json: "$.context.reference_images_json"
+                  reference_dna:         "$.context.reference_dna"
+                outputs:
+                  "$.context.app_type":        app_type
+                  "$.context.profile":         profile
+                  "$.context.direction_brief": direction_brief
+                  "$.context.seeds":           seeds
+
+      # THE SPINE: run the proven annealing search over the derived inputs, with the
+      # aesthetic direction threaded to every generation leaf. The human prune-and-
+      # steer lives inside; this parent parks while the spine awaits the human.
+      annealing:
+        goal: Run the annealing spine over the derived seeds/profile/direction.
+        transitions:
+          anneal:
+            target: done
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/flow.anneal.structure-first
+              use:
+                inputs:
+                  app_type:        "$.context.app_type"
+                  profile:         "$.context.profile"
+                  seeds:           "$.context.seeds"
+                  direction_brief: "$.context.direction_brief"
+                  n:               "$.workflow.input.n"
+                  tau:             "$.workflow.input.tau"
+                  fit_floor:       "$.workflow.input.fit_floor"
+                  scripts_dir:     "$.workflow.input.scripts_dir"
+                  out_dir:         "$.workflow.input.out_dir"
+                  content_path:    "$.workflow.input.content_path"
+                  reference_images_json: "$.context.reference_images_json"
+                  incumbent_url:    "$.workflow.input.incumbent_url"
+                  selfcheck_rounds: "$.workflow.input.selfcheck_rounds"
+                  max_rounds:      "$.workflow.input.max_rounds"
+                outputs:
+                  "$.context.eligible": eligible
+                  "$.context.scored":   scored
+                  "$.context.chosen":   chosen
+                  "$.context.round":    round
+                  "$.context.reason":   reason
+                  "$.context.steer":    steer
+                  "$.context.feedback": feedback
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure
