@@ -1,0 +1,237 @@
+# capabilities/cap.research.design-pass.yaml
+#
+# ============ THE DESIGN-PASS FRONT DOOR — in-context design annealing ============
+# The granularity-aware sibling of cap.research.direction. Where that cap turns a
+# top-level AESTHETIC direction into annealing inputs for a NEW look, THIS cap turns
+# a FUNCTIONAL BRIEF for new functionality in an EXISTING site (a control or a page)
+# into the same structured {unit_type, profile, direction_brief, seeds[]} — bound to
+# the site's EXISTING design system (on-brand by construction) and rendered IN
+# CONTEXT (inside the context_page slice). The aesthetic narrative of the direction
+# front-end is REPLACED by a functional/UX narrative + the ON-BRAND (consume the
+# design system) mandate, both carried on the direction_brief.
+#
+# ENGINE GROUNDING (identical to cap.research.direction — same V-rules):
+#   - VERB (V1/V6): cognitive verb `research` (mines the brief + context + design
+#     system and SYNTHESIZES the seed plan). `kind: agent` is not a legal INITIAL
+#     primary (V6) → a `noop` prep gate leads; the agent step is the SECOND state.
+#   - AFFINITY: `affinity: design` (frontier synthesis → Kimi K3 via models.yaml);
+#     any `kind: agent` step makes gateway.models_yaml a hard requirement at check.
+#   - WRITE EVIDENCE (coding-write-evidence): requires_file_write:true refuses a
+#     zero-write turn; then the SHARED deterministic verifier (verify.direction-brief)
+#     re-opens brief.json and schema-validates it (seeds against the closed scorer
+#     vocabulary — D3: KEEP the structural seed vocabulary, carry the UX intent in
+#     the direction_brief). A described-but-unwritten brief → BRIEF_UNPARSEABLE /
+#     BRIEF_INVALID. Never a fabricated pass.
+#
+# D3 (seed vocabulary): the seeds stay the SAME closed structural vocabulary
+# (corners/type/grid/composition/palette/gradient/rules) the scorer understands; the
+# UX-approach intent (dropdown vs chips vs slider; density; disclosure) rides the
+# direction_brief the generator reads — lower-risk than extending score.mjs.
+workflows:
+  cap.research.design-pass:
+    verb: research
+    lifecycle: experimental
+    tags: [design, design-pass, in-context, on-brand, control, page, kimi]
+    description: >
+      Turn a FUNCTIONAL BRIEF for new functionality in an EXISTING site (granularity
+      control | page) into the structured annealing inputs {unit_type, profile,
+      direction_brief, seeds[]} that the on-brand annealing spine consumes — bound to
+      the site's design system (on-brand by construction) and rendered IN CONTEXT. A
+      `kind: agent` step bound to the `design` affinity writes brief.json; the shared
+      deterministic verifier (verify.direction-brief) schema-validates it (seeds
+      against the closed scorer vocabulary). The direction_brief encodes the
+      functional spec, the ON-BRAND mandate (consume the design system's tokens +
+      shared components — do NOT invent off-system styles), the IN-CONTEXT requirement
+      (render inside the context_page slice), and — for a control — the UX-approach
+      spread intent. Fail-fast BRIEF_UNPARSEABLE / BRIEF_INVALID.
+    snippet:
+      inputs:
+        # Directory to write brief.json into (the run's artifacts dir). Also the
+        # agent's file-host ROOT.
+        out_dir:            { type: string, required: true }
+        # control | page — the unit granularity (spec §2). Governs the seed
+        # vocabulary framing and the "distinctiveness" the generator spreads across.
+        granularity:        { type: string, default: "control" }
+        # The FUNCTIONAL BRIEF — a short prose functional spec of the new unit
+        # (e.g. "a segment filter that defaults to All, single-select, clearable").
+        # "" ⇒ nothing to derive from (the flow's brief_gate fails fast before here).
+        brief:              { type: string, default: "" }
+        # The repo-relative page whose slice the unit is rendered IN CONTEXT within
+        # (D2). Named to the agent so the in-context requirement is concrete.
+        context_page:       { type: string, default: "" }
+        # A marker / description of the SLOT within context_page the unit mounts into
+        # (D2), e.g. "above the results list" or "the <!-- FILTER --> marker".
+        slot:               { type: string, default: "" }
+        # The blessed design-system.md path (repo-relative or absolute) whose tokens +
+        # shared components the options must consume (on-brand). "" ⇒ the site's
+        # captured tokens are the provisional house style (D4 fallback); either way
+        # the direction_brief instructs on-brand.
+        design_system_path: { type: string, default: "" }
+        # How many DISTINCT seeds to derive (the per-round fan-out width).
+        n:                  { type: integer, default: 3 }
+        # Optional visual references the research agent SEES (governed image inputs):
+        # a JSON array STRING of image paths (design-system components + the context
+        # slice, from the grounding phase). "" / "[]" ⇒ text-only.
+        reference_images_json: { type: string, default: "" }
+      outputs:
+        # The unit-type token the agent inferred (e.g. "filter", "cta", "page") —
+        # threaded to the annealing spine as its app_type (PURPOSE gate).
+        unit_type:       { type: string }
+        profile:         { type: string }   # JSON string (score-axes --profile)
+        direction_brief: { type: string }
+        seeds:           { type: array }
+    initialState: preparing
+    initialContext:
+      parsed:          false
+      unit_type:       ""
+      profile:         ""
+      direction_brief: ""
+      seeds:           []
+      reason:          ""
+    states:
+
+      # V6-legal initial primary (noop): a prep gate so the agent step is not the
+      # initial-state transition. Routes straight into derivation.
+      preparing:
+        goal: Prepare to derive the in-context annealing inputs from the brief.
+        transitions:
+          prepare:
+            target: deriving
+            actor: deterministic
+            executor: { kind: noop }
+
+      # THE SYNTHESIS STEP. `kind: agent` + design affinity + the pinned skill
+      # (assembled as the system message). The goal (task/user message) injects the
+      # functional brief, the granularity, the context page + slot, the design-system
+      # reference, n, and the exact output path — and dictates EXACTLY what the
+      # direction_brief must encode (functional spec + on-brand + in-context + spread).
+      deriving:
+        skills: [research.design-direction]
+        goal: >
+          Derive the unit-type + core-needs profile + N distinct structural seeds for
+          new functionality in an EXISTING site, and WRITE them as brief.json.
+        transitions:
+          derive:
+            target: verifying
+            actor: agent
+            executor:
+              kind: agent
+              affinity: design
+              requires_file_write: true
+              max_seconds: 900
+              tools:
+                - "file:{{ $.workflow.input.out_dir }}"
+              owned_files:
+                - "{{ $.workflow.input.out_dir }}/brief.json"
+              # Governed VISUAL references (0.0.48+): the design-system components +
+              # context slice the agent SEES while deriving seeds. "" ⇒ text-only.
+              images:
+                - "{{ $.workflow.input.reference_images_json }}"
+              goal: >
+                You are the front end of an IN-CONTEXT design-annealing pass for new
+                functionality in an EXISTING site. Translate the FUNCTIONAL BRIEF
+                below into the annealing inputs and WRITE them with your file-write
+                tool to EXACTLY this relative path (your file tools are rooted at your
+                working directory — use the relative name):
+
+                  brief.json
+
+                The file MUST be valid JSON matching the schema your instructions
+                specify: { app_type, profile:{app,needs[]}, direction_brief,
+                seeds:[ ... ] }, with EXACTLY {{ $.workflow.input.n }} seeds, each a
+                fully-specified constraint object using ONLY the allowed closed
+                structural keys/values.
+
+                GRANULARITY: {{ $.workflow.input.granularity }}
+                  - control  ⇒ app_type is the CONTROL/unit type (e.g. "filter",
+                    "toggle", "cta", "bulk-action-bar"); the N seeds span meaningfully
+                    DIFFERENT UX APPROACHES for the SAME function (e.g. dropdown vs
+                    chips vs segmented vs slider), not visual novelty.
+                  - page  ⇒ app_type is the page class (e.g. "listing", "detail");
+                    the N seeds span different LAYOUTS/structures.
+
+                FUNCTIONAL BRIEF (what the unit does, its inputs + states — the spec
+                you serve; do NOT substitute a different feature):
+                  {{ $.workflow.input.brief }}
+
+                IN-CONTEXT: the unit is rendered INSIDE a slice of this existing page,
+                at this slot — the generator will mount it there, so the seeds + the
+                direction_brief must suit that context, not a standalone demo:
+                  context page: {{ $.workflow.input.context_page }}
+                  slot:         {{ $.workflow.input.slot }}
+
+                ON-BRAND (by construction): the site already has a design system —
+                every option MUST consume its tokens + shared components and introduce
+                NO off-system colors/fonts (a deterministic token-adherence gate
+                enforces this downstream, so an off-brand direction is wasted). The
+                design system reference is:
+                  {{ $.workflow.input.design_system_path }}
+                (If empty, the site's CURRENT tokens are the provisional house style —
+                still stay on the existing palette + type stack.)
+
+                If IMAGES are attached to this message they are the DESIGN-SYSTEM
+                components + the CONTEXT SLICE — study the existing palette, type
+                register, component shapes, density and spacing so the seeds you
+                derive express the EXISTING house style through different UX
+                approaches (do NOT propose a new look).
+
+                CRITICAL — the direction_brief you write MUST encode ALL of:
+                  1. the FUNCTIONAL SPEC (what the unit does, inputs, states);
+                  2. the ON-BRAND mandate (compose from the design system's tokens +
+                     shared components; do NOT invent off-system styles);
+                  3. the IN-CONTEXT requirement (render the unit inside the named
+                     context page slice, at the slot);
+                  4. (control) the UX-APPROACH SPREAD intent — the different
+                     presentation/interaction patterns the seeds explore.
+                The seeds carry ONLY the closed structural geometry; the UX intent
+                lives in the direction_brief (that is the only channel for it).
+
+                Write ONLY brief.json (no prose, no markdown fences inside it), then
+                stop — the file on disk is the deliverable, not a description of it.
+            output:
+              agent_report: "$.output"
+
+      # DETERMINISTIC verify + schema-validate (coding-write-evidence): the SHARED
+      # verify.direction-brief re-opens brief.json, parses, validates seeds against
+      # the closed scorer vocabulary, and emits the typed inputs. Its `app_type`
+      # output is surfaced as this cap's `unit_type`.
+      verifying:
+        goal: Verify + schema-validate brief.json into typed annealing inputs.
+        transitions:
+          verify:
+            target: verify_gate
+            actor: deterministic
+            executor:
+              kind: script
+              subject: verify.direction-brief
+              args:
+                - "$.workflow.input.out_dir"
+                - "$.workflow.input.n"
+            output:
+              parsed:          "$.output.json.parsed"
+              unit_type:       "$.output.json.app_type"
+              profile:         "$.output.json.profile"
+              direction_brief: "$.output.json.direction_brief"
+              seeds:           "$.output.json.seeds"
+              reason:          "$.output.json.reason"
+
+      verify_gate:
+        transitions:
+          ok:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.parsed == true" }
+          bad:
+            target: failed
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.parsed != true" }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

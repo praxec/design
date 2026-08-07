@@ -1,0 +1,94 @@
+# capabilities/cap.gate.review-design-system.yaml
+#
+# THE DESIGN-SYSTEM REVIEW GATE (flow.design-system stage 3) — the HITL bless of the
+# proposed atomic system before it is declared CANONICAL. Modeled EXACTLY on
+# cap.gate.prune-and-steer: a `gate`-verb (Coordination) cap whose INITIAL state
+# LEADS WITH THE HUMAN (V6 / SPEC §4.1 INVALID_PRIMARY_EXECUTOR requires it), then a
+# trailing DETERMINISTIC leaf reduces the human's verdict:
+#     awaiting_human (human, INITIAL) → validating (script) → done.
+#
+# The human APPROVES / REVISES / REJECTS the proposed system (the design-system.md +
+# the component inventory + the spacing scale the systematize step wrote). Approve
+# blesses it as canonical (`blessed: true`); revise/reject route the flow to a
+# recorded non-canonical outcome. No auto-bless on a machine opinion — the human is
+# the authority over what becomes the canonical system.
+#
+# V6 / SPEC §4.1: a gate cap's INITIAL state must carry the human/ask transition (a
+# gate MUST lead with the human) — so any presentation prep is the orchestrator's job
+# BEFORE this gate, not a leaf inside it (the same decomposition prune-and-steer
+# documents). The collected verdict fields are PRIMITIVE (a plain enum + notes) so
+# the gate stays push-elicitation-compatible (V36).
+workflows:
+  cap.gate.review-design-system:
+    verb: gate
+    lifecycle: experimental
+    tags: [design, design-system, review, hitl]
+    description: >
+      Human review-and-bless of the proposed atomic design system: present the
+      systematized proposal (design-system.md + component inventory + spacing scale),
+      park for the human to APPROVE / REVISE / REJECT it, then reduce the verdict to
+      the `blessed` boolean the flow routes on. The canonicalization authority — no
+      auto-bless on a machine opinion. Fail-fast REVIEW_UNRESOLVED on an empty verdict.
+    snippet:
+      inputs:
+        # The proposed systematized record (from cap.implement.systematize-design-system):
+        # { doc, spacing_scale_present, spacing_tokens, component_files, … }.
+        proposed: { type: object, required: true }
+        prompt:   { type: string, default: "Review the proposed atomic design system: approve to bless it as canonical, or revise/reject." }
+      outputs:
+        # Whether the system is blessed as canonical.
+        blessed: { type: boolean }
+        # The raw human verdict (approve | revise | reject) — evidence of the decision.
+        verdict: { type: string }
+        # Non-canonical reason ("" when approved).
+        reason:  { type: string }
+        # The reviewer's free-text notes / requested revisions (evidence).
+        notes:   { type: string }
+    # `verdict` + `raw_notes` are produced at resume and consumed by validating
+    # (cross-state). `raw_notes` is a NON-output scratch slot on purpose: the gate's
+    # declared scalar `notes` output is emitted by the validating SCRIPT (a guaranteed
+    # source), never derived from the optional human arg (V26).
+    initialContext:
+      verdict:   ""
+      raw_notes: ""
+    initialState: awaiting_human
+    states:
+
+      awaiting_human:
+        goal: Block; surface the proposed design system; collect the human's verdict.
+        transitions:
+          resolve:
+            target: validating
+            actor: human
+            presents: ["$.context.proposed"]
+            inputSchema:
+              type: object
+              required: [verdict]
+              properties:
+                verdict: { type: string, enum: [approve, revise, reject] }
+                notes:   { type: string }
+            executor: { kind: human }
+            output:
+              verdict:   "$.arguments.verdict"
+              raw_notes: "$.arguments.notes"
+
+      validating:
+        goal: Refuse an unresolved review; reduce the verdict to the blessed boolean.
+        transitions:
+          validate:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.validate-review
+              args:
+                - "$.context.verdict"
+                - "$.context.raw_notes"
+                - "$.workflow.input.proposed"
+            output:
+              blessed: "$.output.json.blessed"
+              verdict: "$.output.json.verdict"
+              reason:  "$.output.json.reason"
+              notes:   "$.output.json.notes"
+
+      done: { terminal: true }

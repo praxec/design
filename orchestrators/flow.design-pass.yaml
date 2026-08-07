@@ -1,0 +1,306 @@
+# orchestrators/flow.design-pass.yaml
+#
+# ============ THE DESIGN PASS: in-context annealing for an EXISTING site ============
+# The everyday product-design loop (spec 2026-08-07): anneal a design for NEW
+# functionality in an EXISTING property — a front-end CONTROL (a filter, a toggle, a
+# bulk-action bar, a CTA variant) or a PAGE — producing a spread of ON-BRAND options
+# an engineer prunes and steers. The SIBLING of flow.design.from-direction: where
+# from-direction designs a NEW look, THIS pass is BOUND to the existing site's design
+# system — every option is on-brand BY CONSTRUCTION and rendered IN CONTEXT.
+#
+# STATE ORDER (models on flow.design.from-direction):
+#   brief_gate → grounding(house-style tokens + reference set) → researching → annealing
+#
+#   brief_gate     FAIL-FAST BRIEF_UNSET (mirrors from-direction's DIRECTION_UNSET):
+#                  no functional brief ⇒ nothing to design.
+#   grounding      (a) HOUSE STYLE (D4): a blessed design-system.md (design_system_path)
+#                  → cap.inspect.capture-tokens → the token contract the on-brand gate
+#                  enforces; FALLBACK to capture-tokens over the site's token_target
+#                  stylesheet when no blessed system exists. (b) REFERENCE SET: the
+#                  design-system components + context slice the generator SEES, via the
+#                  same reference-capture path from-direction uses (internal_images /
+#                  reference_urls).
+#   researching    → cap.research.design-pass: brief + granularity + context → the
+#                  structured {unit_type, profile, direction_brief, seeds}. The
+#                  direction_brief encodes the functional spec + on-brand + in-context
+#                  + (control) UX-spread intent.
+#   annealing      → flow.anneal.on-brand: the shared annealing spine with the ADDED
+#                  on-brand (token-adherence) eligibility floor. The generator is
+#                  re-grounded IN CONTEXT (content_path = the context slice) + ON-BRAND
+#                  (direction_brief + reference images). The human prune-and-steer lives
+#                  inside; this parent parks while the spine awaits the human.
+#
+# GROUNDING (reuses from-direction's composition pattern): `kind: workflow`
+# sub-instances (capture → refs → research → anneal); run-tree lineage records the
+# whole chain. `scripts_dir` (abs path to scripts-library/) and `out_dir` (the run's
+# artifacts dir) are threaded through, as the spine needs them.
+#
+# Requires (design/*): cap.inspect.capture-tokens, cap.inspect.reference-capture,
+# cap.research.design-pass, flow.anneal.on-brand, and everything the latter requires.
+workflows:
+
+  flow.design-pass:
+    lifecycle: experimental
+    # A real in-context design spread is legitimately long (frontier generation ×
+    # a multi-candidate fan-out); raise the 30-min backstop to a bounded 2h. The
+    # human prune + cost gates remain the real governors.
+    missionDeadlineSecs: 7200
+    description: >
+      In-context design annealing for an EXISTING site: anneal a spread of ON-BRAND
+      options for new functionality (granularity control | page) bound to the site's
+      design system and rendered IN CONTEXT. Capture the house-style token contract
+      (blessed design-system.md, or the site's tokens fallback), ground the generator
+      in the design system + a context slice, derive {unit_type, profile,
+      direction_brief, seeds} from the functional brief, then run the on-brand
+      annealing spine (token-adherence eligibility floor) with the human prune-and-
+      steer inside. Fail-fast BRIEF_UNSET.
+    inputs:
+      # Absolute path to the TARGET REPO the unit ships into (context for the operator;
+      # the context slice + design system live under it).
+      repo_root:          { type: string,  default: "" }
+      # control | page (spec §2) — the unit granularity.
+      granularity:        { type: string,  default: "control" }
+      # THE FUNCTIONAL BRIEF (D1): a short prose functional spec of the new unit.
+      # "" ⇒ BRIEF_UNSET fail-fast.
+      brief:              { type: string,  default: "" }
+      # The context slice (D2): the page whose slice the unit renders inside. A
+      # RELATIVE filename staged under out_dir is read by the generator (the
+      # from-direction content_path contract); "" ⇒ representative content.
+      context_page:       { type: string,  default: "" }
+      # A marker / description of the SLOT within context_page the unit mounts into (D2).
+      slot:               { type: string,  default: "" }
+      # THE HOUSE STYLE (D4, primary): abs path to the blessed design-system.md whose
+      # tokens the options must consume. "" ⇒ the token_target fallback below.
+      design_system_path: { type: string,  default: "" }
+      # THE HOUSE STYLE (D4, fallback): abs path to the site's token source (e.g. the
+      # global.css whose :root holds the current `--token: #hex` palette) captured as
+      # the provisional house style when no blessed system exists.
+      token_target:       { type: string,  default: "" }
+      # Candidates per round / seeds to derive (the fan-out width).
+      n:                  { type: integer, default: 3 }
+      # Abs path to this pack's scripts-library/ (holds score.mjs / capture-tokens.mjs
+      # / token-adherence.mjs / contact-sheet.mjs) — the spine needs it.
+      scripts_dir:        { type: string,  default: "" }
+      # The run's artifacts dir (brief.json + candidates + the contact sheet live here).
+      out_dir:            { type: string,  default: "" }
+      # OPTIONAL external reference URLs to CAPTURE (design-system component pages /
+      # the live context page): a JSON array STRING of { name, url }. "[]" ⇒ none.
+      reference_urls:     { type: string,  default: "[]" }
+      # OPTIONAL internal images the operator dropped in (design-system component
+      # screenshots / a context-slice screenshot): a JSON array STRING of ABSOLUTE
+      # image paths the generator SEES. "[]" ⇒ none.
+      internal_images:    { type: string,  default: "[]" }
+      # ADVISORY thresholds threaded to the spine (non-gating).
+      tau:                { type: number,  default: 1.549 }
+      fit_floor:          { type: number,  default: 1.0 }
+      # Self-check refine passes per candidate (vision loop). 0 ⇒ plain generation.
+      selfcheck_rounds:   { type: integer, default: 0 }
+      # Bounds the refine loop.
+      max_rounds:         { type: integer, default: 1 }
+    outputs:
+      # Surfaced from the front-end (what the pass derived from the brief).
+      unit_type:       { type: string }
+      direction_brief: { type: string }
+      seeds:           { type: array }
+      # Passed through from the annealing spine.
+      eligible:        { type: array }
+      scored:          { type: array }
+      chosen:          { type: object }
+      round:           { type: integer }
+      reason:          { type: string }
+      steer:           { type: object }
+      feedback:        { type: array }
+    initialContext:
+      unit_type:       ""
+      profile:         ""
+      direction_brief: ""
+      tokens:          {}
+      reference_images_json: "[]"
+      reference_dna:   ""
+      seeds:           []
+      eligible:        []
+      scored:          []
+      chosen:          {}
+      round:           0
+      reason:          ""
+      steer:           {}
+      feedback:        []
+    initialState: brief_gate
+    states:
+
+      # FAIL-FAST BRIEF_UNSET: no functional brief ⇒ nothing to design (mirrors
+      # from-direction's DIRECTION_UNSET). The pass refuses to guess the feature.
+      brief_gate:
+        transitions:
+          proceed:
+            target: housestyle_gate
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.brief != ''" }
+          unset:
+            target: fail_brief
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.brief == ''" }
+
+      fail_brief:
+        goal: Record the BRIEF_UNSET fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "BRIEF_UNSET" }
+
+      # HOUSE STYLE (D4) — BRANCH on whether a blessed design system exists: a
+      # design_system_path captures ITS tokens (primary); otherwise fall back to the
+      # site's token_target stylesheet as the provisional house style. The token
+      # contract is what the on-brand gate downstream enforces.
+      housestyle_gate:
+        transitions:
+          blessed:
+            target: capturing_system
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.design_system_path != ''" }
+          fallback:
+            target: capturing_fallback
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.design_system_path == ''" }
+
+      # PRIMARY: capture the blessed design-system.md into the token contract.
+      capturing_system:
+        goal: Capture the blessed design system into the house-style token contract.
+        transitions:
+          capture:
+            target: gathering_refs
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.capture-tokens
+              use:
+                inputs:
+                  scripts_dir:        "$.workflow.input.scripts_dir"
+                  design_system_path: "$.workflow.input.design_system_path"
+                  repo_root:          "$.workflow.input.repo_root"
+                outputs:
+                  "$.context.tokens": tokens
+
+      # FALLBACK (D4): capture the site's CURRENT tokens (the token_target stylesheet's
+      # `--token: #hex` palette) as the provisional house style — same capture-tokens
+      # cap, pointed at the stylesheet.
+      capturing_fallback:
+        goal: Capture the site's current tokens as the provisional house style (fallback).
+        transitions:
+          capture:
+            target: gathering_refs
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.capture-tokens
+              use:
+                inputs:
+                  scripts_dir:        "$.workflow.input.scripts_dir"
+                  design_system_path: "$.workflow.input.token_target"
+                  repo_root:          "$.workflow.input.repo_root"
+                outputs:
+                  "$.context.tokens": tokens
+
+      # REFERENCE SET — capture the design-system components + context slice into the
+      # visual set the generator SEES (same reference-capture path from-direction uses).
+      # Empty refs+images ⇒ reference_images_json="[]" (text-only grounding; the
+      # generator still gets the tokens via direction_brief + reads the context slice).
+      gathering_refs:
+        goal: Capture the design-system + context-slice reference set (sub-instance).
+        transitions:
+          gather:
+            target: researching
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.reference-capture
+              use:
+                inputs:
+                  scripts_dir:     "$.workflow.input.scripts_dir"
+                  out_dir:         "$.workflow.input.out_dir"
+                  reference_urls:  "$.workflow.input.reference_urls"
+                  internal_images: "$.workflow.input.internal_images"
+                outputs:
+                  "$.context.reference_images_json": reference_images_json
+                  "$.context.reference_dna":         reference_dna
+
+      # THE FRONT DOOR: derive {unit_type, profile, direction_brief, seeds} from the
+      # functional brief + granularity + context (governed design-affinity agent +
+      # deterministic verify), grounded in the reference set.
+      researching:
+        goal: Derive the in-context annealing inputs from the brief (sub-instance).
+        transitions:
+          research:
+            target: annealing
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.research.design-pass
+              use:
+                inputs:
+                  out_dir:            "$.workflow.input.out_dir"
+                  granularity:        "$.workflow.input.granularity"
+                  brief:              "$.workflow.input.brief"
+                  context_page:       "$.workflow.input.context_page"
+                  slot:               "$.workflow.input.slot"
+                  design_system_path: "$.workflow.input.design_system_path"
+                  n:                  "$.workflow.input.n"
+                  reference_images_json: "$.context.reference_images_json"
+                outputs:
+                  "$.context.unit_type":       unit_type
+                  "$.context.profile":         profile
+                  "$.context.direction_brief": direction_brief
+                  "$.context.seeds":           seeds
+
+      # THE ON-BRAND SPINE: run the annealing search with the token-adherence
+      # eligibility floor, the generator re-grounded IN CONTEXT (content_path = the
+      # context slice) + ON-BRAND (direction_brief + reference images + the token
+      # contract). The human prune-and-steer lives inside; this parent parks.
+      annealing:
+        goal: Run the on-brand annealing spine over the derived seeds/profile/direction.
+        transitions:
+          anneal:
+            target: done
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/flow.anneal.on-brand
+              use:
+                inputs:
+                  app_type:        "$.context.unit_type"
+                  profile:         "$.context.profile"
+                  seeds:           "$.context.seeds"
+                  direction_brief: "$.context.direction_brief"
+                  tokens:          "$.context.tokens"
+                  n:               "$.workflow.input.n"
+                  tau:             "$.workflow.input.tau"
+                  fit_floor:       "$.workflow.input.fit_floor"
+                  scripts_dir:     "$.workflow.input.scripts_dir"
+                  out_dir:         "$.workflow.input.out_dir"
+                  content_path:    "$.workflow.input.context_page"
+                  reference_images_json: "$.context.reference_images_json"
+                  selfcheck_rounds: "$.workflow.input.selfcheck_rounds"
+                  max_rounds:      "$.workflow.input.max_rounds"
+                outputs:
+                  "$.context.eligible": eligible
+                  "$.context.scored":   scored
+                  "$.context.chosen":   chosen
+                  "$.context.round":    round
+                  "$.context.reason":   reason
+                  "$.context.steer":    steer
+                  "$.context.feedback": feedback
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

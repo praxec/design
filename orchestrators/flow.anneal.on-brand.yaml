@@ -1,0 +1,474 @@
+# orchestrators/flow.anneal.on-brand.yaml
+#
+# ============ THE ON-BRAND ANNEALING SPINE (design-pass variant) ============
+# A THIN FORK of flow.anneal.structure-first for the in-context design pass
+# (flow.design-pass). It REUSES every spine sub-cap VERBATIM by definitionId —
+# design/cap.run.set-seeds, design/cap.inspect.next-seed, design/flow.generate.
+# self-checked, design/cap.run.render-thumbnail, design/cap.inspect.score-axes,
+# design/cap.verify.detect-antipatterns, design/cap.inspect.collect-candidate,
+# design/cap.inspect.contact-sheet, design/cap.gate.prune-and-steer — and adds ONE
+# thing the shared spine cannot host without changing behavior for every other
+# caller: an ON-BRAND ELIGIBILITY FLOOR.
+#
+# WHY A FORK (per the build brief): the shared eligibility floor lives in the
+# co-located sub-cap cap.inspect.collect-candidate, whose script keys eligibility on
+# `antipattern_count == 0` (real usability) ONLY. Adding token-adherence to the floor
+# would mean either editing that shared sub-cap (which flow.design.from-direction and
+# flow.anneal.structure-first depend on, and which carries no token contract) or
+# forking the flow WRAPPER. The brief says: PREFER reuse, only fork the flow wrapper,
+# NEVER the sub-caps. So this wrapper adds the gate and reuses the sub-caps unchanged.
+#
+# THE ON-BRAND FLOOR (spec §4): after the usability detect, run the deterministic
+# design/cap.verify.token-adherence gate over the candidate against the house-style
+# token contract. An option that introduces off-system colors/fonts is NOT eligible —
+# it is routed straight back to the next divergence WITHOUT entering collect (so it
+# never joins the eligible set the human prunes). A detect-clean AND token-adherent
+# option proceeds to collect, which then applies the usability floor. Net floor:
+# eligible ⇔ (antipattern_count == 0) AND (token-adherent). This keeps collect-
+# candidate's semantics PURE (antipattern_count == real usability) — no conflation.
+#
+# Baseline/incumbent capture (Part B of the shared spine) is intentionally DROPPED
+# here: the design pass grounds on the design system + a context slice, not an
+# incumbent snapshot, so this variant stays lean. Everything else mirrors the shared
+# spine's proven shapes (V2 dedicated-noop bump, DIVERGENCE_COLLAPSED fail-fast, the
+# human prune-and-steer sub-cap that parks the parent).
+#
+# Requires (design/*): all the spine sub-caps above PLUS cap.verify.token-adherence,
+# and the scripts-library bodies they wrap. `scripts_dir` + `tokens` are inputs.
+workflows:
+
+  flow.anneal.on-brand:
+    lifecycle: experimental
+    # Same rationale as the shared spine + flow.design.from-direction: a real design
+    # spread is legitimately long; raise the 30-min backstop to a bounded 2h.
+    missionDeadlineSecs: 7200
+    description: >
+      On-brand annealing spine (design-pass variant): diverge N candidates over the
+      derived seed set, render + score + detect each as sub-instances, THEN gate each
+      on token-adherence against the house-style contract (off-system colors/fonts ⇒
+      not eligible), and present every detect-clean AND on-brand candidate to a human
+      prune-and-steer, then refine over the survivor — bounded by max_rounds. Reuses
+      the shared spine's sub-caps verbatim; adds only the on-brand eligibility floor.
+      Fails fast PURPOSE_UNSET and DIVERGENCE_COLLAPSED.
+    inputs:
+      app_type:    { type: string, default: "" }
+      profile:     { type: string, default: "" }
+      seeds:       { type: array,  default: [] }
+      n:           { type: integer, default: 3 }
+      tau:         { type: number, default: 1.549 }
+      fit_floor:   { type: number, default: 1.0 }
+      scripts_dir: { type: string, default: "" }
+      out_dir:     { type: string, default: "" }
+      # The IN-CONTEXT slice the generator mounts the unit into (repo-relative or abs
+      # path the generation agent reads). "" ⇒ representative content.
+      content_path: { type: string, default: "" }
+      # The functional/UX + on-brand + in-context narrative threaded to every
+      # generation leaf (from cap.research.design-pass).
+      direction_brief: { type: string, default: "" }
+      # Governed visual references the generator SEES (design system + context slice),
+      # a JSON array STRING of image paths. "" ⇒ no images.
+      reference_images_json: { type: string, default: "" }
+      # THE HOUSE-STYLE TOKEN CONTRACT (from cap.inspect.capture-tokens over the
+      # blessed design-system.md, or the site's tokens fallback) — the on-brand gate
+      # asserts every candidate uses ONLY this palette + font stack. {} ⇒ an empty
+      # contract; token-adherence.mjs fails fast CONTRACT_EMPTY (never gate on nothing).
+      tokens:      { type: object, default: {} }
+      # Self-check refine passes per candidate (vision loop). 0 ⇒ plain generation.
+      selfcheck_rounds: { type: integer, default: 0 }
+      max_rounds:  { type: integer, default: 1 }
+    outputs:
+      eligible: { type: array }
+      scored:   { type: array }
+      chosen:   { type: object }
+      round:    { type: integer }
+      reason:   { type: string }
+      steer:    { type: object }
+      feedback: { type: array }
+    # Seed every declared output (V24) + the loop slots read before their first writer.
+    initialContext:
+      eligible:               []
+      scored:                 []
+      chosen:                 {}
+      round:                  0
+      reason:                 ""
+      seeds:                  []
+      seed_idx:               0
+      eligible_count:         0
+      pick_phase:             ""
+      current_seed:           "{}"
+      candidate_id:           ""
+      candidate:              {}
+      thumbnail:              {}
+      cand_g:                 0
+      cand_fit:               {}
+      cand_antipattern_count: 0
+      cand_warnings:          []
+      cand_adherent:          false
+      cand_offsystem:         []
+      contact_sheet:          {}
+      steer:                  {}
+      feedback:               []
+    initialState: seeding
+    states:
+
+      # Own the round-1 seed set from the operator's input (chosen is {} here, so
+      # set-seeds echoes seeds_in).
+      seeding:
+        goal: Seed the round's working seed set from the input.
+        transitions:
+          seed:
+            target: purpose_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.set-seeds
+              use:
+                inputs:
+                  seeds_in: "$.workflow.input.seeds"
+                  chosen:   "$.context.chosen"
+                outputs:
+                  "$.context.round_seeds": seeds
+
+      # FAIL-FAST PURPOSE_UNSET: no app_type (unit_type) ⇒ refuse to generate.
+      purpose_gate:
+        transitions:
+          proceed:
+            target: diverging
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.app_type != ''" }
+          unset:
+            target: fail_purpose
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.workflow.input.app_type == ''" }
+
+      fail_purpose:
+        goal: Record the PURPOSE_UNSET fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "PURPOSE_UNSET" }
+
+      # DIVERGE — the fan-out cursor. Picks the next seed (bounded by N), advancing
+      # the monotone cursor AT PICK TIME.
+      diverging:
+        goal: Pick the next seed to diverge on (or exhaust the round).
+        transitions:
+          pick:
+            target: diverge_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.next-seed
+              use:
+                inputs:
+                  seeds:    "$.context.round_seeds"
+                  seed_idx: "$.context.seed_idx"
+                  n:        "$.workflow.input.n"
+                outputs:
+                  "$.context.pick_phase":   phase
+                  "$.context.current_seed": current_seed
+                  "$.context.candidate_id": candidate_id
+                  "$.context.seed_idx":     next_idx
+
+      # BRANCH on the fan-out phase + the eligibility scalar. Exhausted with zero
+      # eligible (every candidate had a usability error OR was off-brand) ⇒
+      # DIVERGENCE_COLLAPSED; with >=1 eligible ⇒ human prune.
+      diverge_gate:
+        transitions:
+          generate:
+            target: generating
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'picked'" }
+          prune:
+            target: building_sheet
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'exhausted'" }
+              - { kind: expr, expr: "$.context.eligible_count > 0" }
+          collapse:
+            target: fail_collapse
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.pick_phase == 'exhausted'" }
+              - { kind: expr, expr: "$.context.eligible_count == 0" }
+          unexpected:
+            target: fail_unexpected
+            actor: deterministic
+
+      fail_collapse:
+        goal: Record the DIVERGENCE_COLLAPSED fail-fast reason.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "DIVERGENCE_COLLAPSED" }
+
+      fail_unexpected:
+        goal: Record a broken fan-out phase contract.
+        transitions:
+          mark:
+            target: failed
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              reason: { set: "UNEXPECTED_PICK_PHASE" }
+
+      # GENERATE one candidate for the picked seed — routed through the self-checked
+      # loop (a drop-in for the plain generation cap). The generator is RE-GROUNDED
+      # in-context + on-brand via direction_brief + content_path (the context slice) +
+      # the reference images (design system + slice). selfcheck_rounds=0 ⇒ generate-only.
+      generating:
+        goal: Generate a candidate direction for the picked seed (sub-instance).
+        transitions:
+          generate:
+            target: rendering
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/flow.generate.self-checked
+              use:
+                inputs:
+                  out_dir:         "$.workflow.input.out_dir"
+                  seed:            "$.context.current_seed"
+                  profile:         "$.workflow.input.profile"
+                  candidate_id:    "$.context.candidate_id"
+                  content_path:    "$.workflow.input.content_path"
+                  direction_brief: "$.workflow.input.direction_brief"
+                  reference_images_json: "$.workflow.input.reference_images_json"
+                  scripts_dir:      "$.workflow.input.scripts_dir"
+                  selfcheck_rounds: "$.workflow.input.selfcheck_rounds"
+                outputs:
+                  "$.context.candidate": candidate
+
+      # RENDER the candidate to a real thumbnail. Fail-fast CANDIDATE_NOT_RENDERABLE
+      # lives in this cap.
+      rendering:
+        goal: Render the candidate to a thumbnail ref (sub-instance).
+        transitions:
+          render:
+            target: scoring
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.render-thumbnail
+              use:
+                inputs:
+                  scripts_dir:  "$.workflow.input.scripts_dir"
+                  candidate:    "$.context.candidate.artifact"
+                  out_dir:      "$.workflow.input.out_dir"
+                  candidate_id: "$.context.candidate_id"
+                outputs:
+                  "$.context.thumbnail": thumbnail
+
+      # SCORE the candidate on independent axes (G + fit + seed-adherence).
+      scoring:
+        goal: Score G + fit + seed-adherence (sub-instance; threads scripts_dir).
+        transitions:
+          score:
+            target: gating
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.score-axes
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  artifact:    "$.context.candidate.artifact"
+                  seed:        "$.context.current_seed"
+                  profile:     "$.workflow.input.profile"
+                outputs:
+                  "$.context.cand_g":   G
+                  "$.context.cand_fit": fit
+
+      # DETECT the usability floor (impeccable detect, LLM-free).
+      gating:
+        goal: Run the deterministic usability floor (sub-instance).
+        transitions:
+          detect:
+            target: onbranding
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.detect-antipatterns
+              use:
+                inputs:
+                  artifact: "$.context.candidate.artifact"
+                outputs:
+                  "$.context.cand_antipattern_count": antipattern_count
+                  "$.context.cand_warnings":          warnings
+
+      # ============ THE ON-BRAND GATE (NEW eligibility criterion) ============
+      # Assert the candidate uses ONLY the house-style token contract's palette +
+      # font stack. Off-system colors/fonts ⇒ adherent:false. LLM-free.
+      onbranding:
+        goal: Assert the candidate is on-brand (token-adherent) against the house style.
+        transitions:
+          verify:
+            target: onbrand_gate
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.verify.token-adherence
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  artifact:    "$.context.candidate.artifact"
+                  tokens:      "$.workflow.input.tokens"
+                outputs:
+                  "$.context.cand_adherent":  adherent
+                  "$.context.cand_offsystem": off_system
+
+      # BRANCH: on-brand ⇒ collect (which then applies the usability floor);
+      # off-brand ⇒ drop the candidate (route back to the next divergence WITHOUT
+      # collecting, so it never enters the eligible set). Net floor: detect-clean
+      # AND token-adherent.
+      onbrand_gate:
+        transitions:
+          on_brand:
+            target: collecting
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.cand_adherent == true" }
+          off_brand:
+            target: diverging
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.cand_adherent != true" }
+
+      # COLLECT — apply the usability eligibility floor + accumulate the ledgers in
+      # code (fit/G carried as advisory), then LOOP back to diverge next seed. Only
+      # on-brand candidates reach here (the on-brand gate is upstream).
+      collecting:
+        goal: Apply the usability floor; accumulate the eligible/scored ledgers; loop.
+        transitions:
+          collect:
+            target: diverging
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.collect-candidate
+              use:
+                inputs:
+                  tau:               "$.workflow.input.tau"
+                  fit_floor:         "$.workflow.input.fit_floor"
+                  G:                 "$.context.cand_g"
+                  fit:               "$.context.cand_fit"
+                  antipattern_count: "$.context.cand_antipattern_count"
+                  candidate:         "$.context.candidate"
+                  thumbnail:         "$.context.thumbnail"
+                  eligible_in:       "$.context.eligible"
+                  scored_in:         "$.context.scored"
+                  warnings:          "$.context.cand_warnings"
+                outputs:
+                  "$.context.eligible":       eligible
+                  "$.context.scored":         scored
+                  "$.context.eligible_count": eligible_count
+
+      # BUILD THE CONTACT SHEET — compose the eligible spread into ONE self-contained
+      # local contact-sheet.html the human opens (live iframes for interactive
+      # controls). A deterministic leaf that MUST precede the gate (V6/§4.1).
+      building_sheet:
+        goal: Compose the eligible spread into one contact sheet for the human.
+        transitions:
+          build:
+            target: pruning
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.inspect.contact-sheet
+              use:
+                inputs:
+                  scripts_dir: "$.workflow.input.scripts_dir"
+                  candidates:  "$.context.eligible"
+                  out_dir:     "$.workflow.input.out_dir"
+                outputs:
+                  "$.context.contact_sheet": contact_sheet
+
+      # THE HUMAN PRUNE-AND-STEER — present the pre-built contact sheet of the
+      # on-brand spread, park for the human to react per candidate and keep ONE
+      # survivor, then aggregate the reactions into the steer the next divergence
+      # anneals toward. The parent parks while the child awaits the human.
+      pruning:
+        goal: Human prunes the eligible set to one survivor and steers the next spread.
+        transitions:
+          prune:
+            target: refine_route
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.gate.prune-and-steer
+              use:
+                inputs:
+                  candidates:    "$.context.eligible"
+                  contact_sheet: "$.context.contact_sheet"
+                outputs:
+                  "$.context.chosen":   chosen
+                  "$.context.steer":    steer
+                  "$.context.feedback": feedback
+
+      # REFINE ROUTE — loop back over the survivor with tightened seeds unless the
+      # round budget is spent.
+      refine_route:
+        transitions:
+          refine:
+            target: refining
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.round < $.workflow.input.max_rounds" }
+          finish:
+            target: done
+            actor: deterministic
+            guards:
+              - { kind: expr, expr: "$.context.round >= $.workflow.input.max_rounds" }
+
+      # Converge the next round's seed set on the survivor + fold in the human's steer.
+      refining:
+        goal: Tighten the seed set around the survivor + fold in the human's steer.
+        transitions:
+          tighten:
+            target: bumping
+            actor: deterministic
+            executor:
+              kind: workflow
+              definitionId: design/cap.run.set-seeds
+              use:
+                inputs:
+                  seeds_in: "$.context.round_seeds"
+                  chosen:   "$.context.chosen"
+                  steer:    "$.context.steer"
+                outputs:
+                  "$.context.round_seeds": seeds
+
+      # BUMP the round counter + RESET the per-round loop slots on a DEDICATED
+      # noop-executor state (an output mutation on a bare guard transition is not
+      # applied — the V2 gotcha). Then diverge the next round.
+      bumping:
+        goal: Increment the round; reset the fan-out cursor + ledgers; loop.
+        transitions:
+          bump:
+            target: diverging
+            actor: deterministic
+            executor: { kind: noop }
+            output:
+              round:          { add: ["$.context.round", 1] }
+              seed_idx:       { set: 0 }
+              eligible:       { set: [] }
+              eligible_count: { set: 0 }
+              scored:         { set: [] }
+              chosen:         { set: {} }
+
+      done:
+        terminal: true
+        outcome: success
+
+      failed:
+        terminal: true
+        outcome: failure

@@ -1,0 +1,75 @@
+# capabilities/cap.inspect.audit-design-system.yaml
+#
+# Stage 1 (AUDIT / DETECT) of flow.design-system — the design-system LIFECYCLE flow
+# (ESTABLISH-OR-HONE the canonical atomic system), distinct from flow.rollout (which
+# PROPAGATES an already-blessed system). Mirrors cap.inspect.capture-tokens EXACTLY
+# (the CAP-WRAPS-SCRIPT-SKILL pattern): verb `inspect` (the blessed deterministic
+# introspection verb — reads source files, writes ONE read-only structured artifact),
+# a single `kind: script` leaf wrapping the tested core (audit-design-system.mjs,
+# single source of truth) via the `inspect.audit-design-system` script-skill.
+#
+# Because the engine exposes no pack-directory scope, `scripts_dir` (the absolute
+# path to this pack's scripts-library/, holding audit-design-system.mjs) is threaded
+# in as an input the orchestrator/operator supplies — same seam as capture-tokens.
+#
+# V6: `inspect` is Deterministic → primary must be `kind: script`.
+#
+# The audit NEVER edits the target repo — it is read-only. The heuristic `exists`
+# it emits is what the orchestrator branches on: exists ⇒ hone (a system is there,
+# close its gaps); not-exists ⇒ create (greenfield the atomic system).
+workflows:
+  cap.inspect.audit-design-system:
+    verb: inspect
+    lifecycle: experimental
+    tags: [design, design-system, audit, detect]
+    description: >
+      Deterministically audit a target repo's central stylesheet + component files
+      into the signal set { exists, spacing_scale_present, adhoc_px, component_files,
+      gaps } by wrapping the tested audit core (audit-design-system.mjs). `exists` is
+      the heuristic (spacing scale present AND >= 2 shared components) the flow
+      branches on: create (greenfield) vs hone (close the gaps). Read-only — makes no
+      repo edits.
+    snippet:
+      inputs:
+        # Absolute path to this pack's scripts-library/ (holds audit-design-system.mjs).
+        # The engine has no pack-dir scope, so the caller passes it explicitly.
+        scripts_dir:    { type: string, required: true }
+        # Absolute path to the target repo to audit (read-only).
+        repo_root:      { type: string, required: true }
+        # Repo-relative central stylesheet + shared-components dir.
+        token_target:   { type: string, default: "src/styles/global.css" }
+        components_dir: { type: string, default: "src/components" }
+      outputs:
+        exists:                { type: boolean }
+        spacing_scale_present: { type: boolean }
+        # adhoc_px entries now carry LOCATIONS: { value, count, locations: [{ file, line }] }.
+        adhoc_px:              { type: array }
+        # near_duplicates: [{ body, occurrences: [{ file, selector }] }] — the copy-pasted
+        # rule bodies with WHERE they occur, so the systematize agent edits sites directly.
+        near_duplicates:       { type: array }
+        component_files:       { type: array }
+        gaps:                  { type: array }
+    initialState: auditing
+    states:
+      auditing:
+        goal: Audit the target repo into the deterministic design-system signal set.
+        transitions:
+          audit:
+            target: done
+            actor: deterministic
+            executor:
+              kind: script
+              subject: inspect.audit-design-system
+              args:
+                - "$.workflow.input.scripts_dir"
+                - "$.workflow.input.repo_root"
+                - "$.workflow.input.token_target"
+                - "$.workflow.input.components_dir"
+            output:
+              exists:                "$.output.json.exists"
+              spacing_scale_present: "$.output.json.spacing_scale_present"
+              adhoc_px:              "$.output.json.adhoc_px"
+              near_duplicates:       "$.output.json.near_duplicates"
+              component_files:       "$.output.json.component_files"
+              gaps:                  "$.output.json.gaps"
+      done: { terminal: true }
