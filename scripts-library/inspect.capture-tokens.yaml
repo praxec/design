@@ -35,6 +35,9 @@ scripts:
       set -uo pipefail
       SCRIPTS_DIR="${1:-}"
       DS_PATH="${2:-}"
+      # repo_root: a repo-relative DS_PATH is resolved against it in the tool
+      # (portability — no machine-absolute paths in flow inputs). "" ⇒ DS_PATH used as-is.
+      REPO_ROOT="${3:-}"
 
       if [ -z "$SCRIPTS_DIR" ] || [ -z "$DS_PATH" ]; then
         echo '{"error":"ARGS_UNSET","need":["scripts_dir","design_system_path"]}' >&2
@@ -45,4 +48,4 @@ scripts:
         printf '{"error":"CAPTURE_TOOL_UNRESOLVED","looked":"%s"}\n' "$TOOL" >&2
         exit 5
       fi
-      exec node "$TOOL" "$DS_PATH"
+      exec node "$TOOL" "$DS_PATH" "$REPO_ROOT"

@@ -33,8 +33,12 @@ workflows:
         # Absolute path to this pack's scripts-library/ (holds capture-tokens.mjs).
         # The engine has no pack-dir scope, so the caller passes it explicitly.
         scripts_dir:        { type: string, required: true }
-        # The approved design-system.md to capture.
+        # The approved design-system.md to capture. REPO-RELATIVE (resolved against
+        # repo_root in the tool) — never a machine-absolute path in a flow input.
         design_system_path: { type: string, required: true }
+        # Root a repo-relative design_system_path resolves against (portability).
+        # "" ⇒ used as-is (back-compat for absolute callers).
+        repo_root:          { type: string, default: "" }
       outputs:
         tokens: { type: object }
     initialState: capturing
@@ -51,6 +55,7 @@ workflows:
               args:
                 - "$.workflow.input.scripts_dir"
                 - "$.workflow.input.design_system_path"
+                - "$.workflow.input.repo_root"
             output:
               tokens: "$.output.json.tokens"
       done: { terminal: true }

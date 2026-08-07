@@ -21,6 +21,7 @@
 // no `--token #hex` color rows — refuse to emit an empty, un-enforceable contract).
 
 import { readFileSync } from "node:fs";
+import { resolve, isAbsolute } from "node:path";
 
 // ---- a color-token table row: `| `--ink` | #1f2330 | role |` -----------------
 // A row contributes iff it carries BOTH a `--token` AND a hex on the same line
@@ -79,11 +80,16 @@ export function captureTokens(markdown) {
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
-  const path = process.argv[2];
-  if (!path) {
-    console.error(JSON.stringify({ error: "NO_INPUT", message: "usage: node capture-tokens.mjs <design-system.md>" }));
+  const rawPath = process.argv[2];
+  const repoRoot = process.argv[3] || "";
+  if (!rawPath) {
+    console.error(JSON.stringify({ error: "NO_INPUT", message: "usage: node capture-tokens.mjs <design-system-path> [repo_root]" }));
     process.exit(2);
   }
+  // PORTABILITY: path inputs are repo-relative; resolve against repo_root at this
+  // boundary so a flow/ticket never carries a machine-absolute path. An
+  // already-absolute path passes through unchanged (backward-compatible).
+  const path = repoRoot && !isAbsolute(rawPath) ? resolve(repoRoot, rawPath) : rawPath;
   let md;
   try {
     md = readFileSync(path, "utf8");

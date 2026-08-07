@@ -117,6 +117,7 @@ workflows:
                 inputs:
                   scripts_dir:        "$.workflow.input.scripts_dir"
                   design_system_path: "$.workflow.input.design_system_path"
+                  repo_root:          "$.workflow.input.repo_root"
                 outputs:
                   "$.context.tokens": tokens
 
